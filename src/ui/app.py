@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import base64
 import os
 import sys
 
@@ -17,6 +16,7 @@ if project_root not in sys.path:
 from src.core.config_loader import load_config
 from src.core.store_manager import load_store_master, calc_auto_counts, extract_manual_counts
 from src.core.calculator import calculate_fee
+from src.core.file_utils import read_excel_safe
 
 # Page Config
 st.set_page_config(page_title="新品铺货费计算器", page_icon="💰", layout="wide")
@@ -43,7 +43,8 @@ def main():
     
     if uploaded_master:
         try:
-            store_master_df = pd.read_excel(uploaded_master)
+            # Explicitly specify engine='openpyxl' for uploaded files
+            store_master_df = pd.read_excel(uploaded_master, engine='openpyxl')
             st.sidebar.success(f"已加载: {len(store_master_df)} 家门店")
         except Exception as e:
             st.sidebar.error(f"加载失败: {e}")
@@ -61,6 +62,8 @@ def main():
 
     # --- Tab 1: Single Calculator ---
     with tab1:
+        # st.header("单品费用计算") # Removed to save space as per "compact" request
+        
         with st.container(border=True):
             st.markdown("#### 📝 通道计算器 -- 输入信息")
             
@@ -107,6 +110,9 @@ def main():
             
             if "标准通道" in channel_mode:
                 st.write("手动选择三色通道:")
+                # Use columns to make radio buttons look horizontal/compact if needed, 
+                # but standard vertical radio is fine as per image.
+                # Image shows vertical list.
                 color_selection = st.radio(
                     "选择颜色",
                     ["🟡 黄色", "🔵 蓝色", "🟢 绿色"],
@@ -145,6 +151,9 @@ def main():
                 
                 # Merge manual counts if custom
                 if channel == "自定义":
+                    # Mocking the row data structure expected by extract_manual_counts
+                    # Actually we can just pass the dict directly if we modify logic or just construct it here
+                    # Let's construct the dict expected by extract_manual_counts
                     for k, v in manual_counts.items():
                         row_data[f"(自定义){k}数"] = v
                 
@@ -179,7 +188,7 @@ def main():
                         classes='table table-bordered', 
                         border=0, 
                         justify='left'
-                    ).replace('\n', '') # Remove newlines to prevent Markdown issues
+                    )
                     
                     # Construct HTML string WITHOUT indentation to prevent Markdown code block interpretation
                     html_content = f"""
@@ -200,8 +209,11 @@ def main():
         <span style="font-weight: bold; font-size: 1.5em; color: #555;">折后总新品铺货费 (元)：</span>
         <span style="font-weight: bold; font-size: 1.8em; color: #D32F2F;">{int(result['final_fee'])}</span>
     </div>
+    
     <p style="color: gray; margin-bottom: 10px;">铺货门店</p>
+    
     {table_html}
+    
     <div style="margin-top: 10px; color: gray;">
         计算池中的门店数量: {sum(result['store_details'].values())} (全集团)
     </div>
@@ -210,16 +222,8 @@ def main():
                     st.markdown(html_content, unsafe_allow_html=True)
                     
                     # Debug/Detailed breakdown (Hidden by default but available)
-                    with st.expander("规则说明"):
-                        rule_pdf_path = os.path.join(project_root, "data", "rule_description.pdf")
-                        if os.path.exists(rule_pdf_path):
-                            with open(rule_pdf_path, "rb") as f:
-                                base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-                            # Embedding PDF in HTML
-                            pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
-                            st.markdown(pdf_display, unsafe_allow_html=True)
-                        else:
-                            st.info("暂无规则说明文档 (请在 data 目录下放置 rule_description.pdf)")
+                    with st.expander("查看详细计算过程"):
+                        st.text(result['breakdown_str'])
                         
                 except Exception as e:
                     st.error(f"计算出错: {e}")
@@ -245,7 +249,9 @@ def main():
                 st.error("请先加载门店主数据（用于非自定义通道）！")
             else:
                 try:
-                    df = pd.read_excel(uploaded_batch)
+                    # Explicitly specify engine='openpyxl'
+                    # Use safe reader to handle potential encryption/format issues
+                    df = read_excel_safe(uploaded_batch)
                     results = []
                     logs = []
                     
