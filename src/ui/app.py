@@ -3,9 +3,10 @@ import pandas as pd
 import base64
 import os
 import sys
+from io import BytesIO
+from datetime import datetime
 
 # --- Path Setup ---
-# 计算项目根目录绝对路径，确保在任何运行位置都能正确导入模块
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, '..', '..'))
 
@@ -33,7 +34,6 @@ def main():
 
     # --- Sidebar: 全局配置 ---
     st.sidebar.header("全局配置")
-    
     store_master_path = os.path.join(project_root, "data", "store_master.xlsx")
     uploaded_master = st.sidebar.file_uploader("上传门店主数据 (覆盖默认)", type=["xlsx"])
     
@@ -55,12 +55,11 @@ def main():
     # --- Tabs ---
     tab1, tab2 = st.tabs(["📝 单品计算器", "📂 批量计算器"])
 
-    # --- Tab 1: 单品计算器 ---
+    # --- Tab 1: 单品计算器（保持完美布局）---
     with tab1:
         with st.container(border=True):
             st.markdown("#### 📝 通道计算器 -- 输入信息")
             
-            # 输入区域布局
             c1, c2 = st.columns(2)
             with c1:
                 category = st.selectbox("新品大类", list(config["base_fees"].keys()))
@@ -83,11 +82,10 @@ def main():
             with c7:
                 supplier_type = st.selectbox("供应商类型", list(config["supplier_type_coeffs"].keys()))
             with c8:
-                pass  # 保留空列以保持对齐
+                pass
 
             st.markdown("---")
             
-            # 通道选择
             st.markdown("**通道选择**")
             channel_mode = st.radio(
                 "通道模式",
@@ -118,12 +116,10 @@ def main():
                 with cc4:
                     manual_counts["普通店"] = st.number_input("普通", min_value=0, key="custom_norm")
 
-        # 计算按钮
         if st.button("计算费用", type="primary", use_container_width=True):
             if store_master_df is None and channel != "自定义":
                 st.error("请先加载门店主数据！")
             else:
-                # 构造计算所需的数据字典
                 row_data = {
                     "商品品类": category,
                     "SKU数": sku_count,
@@ -140,7 +136,6 @@ def main():
                         row_data[f"(自定义){k}数"] = v
 
                 try:
-                    # 获取门店数量
                     if channel == "自定义":
                         store_counts = extract_manual_counts(row_data)
                     else:
@@ -148,10 +143,8 @@ def main():
                     
                     result = calculate_fee(row_data, store_counts, config)
 
-                    # ==================== 输出区域：严格按照你的截图布局 ====================
                     st.markdown("### 通道计算器--输出信息")
 
-                    # 绿色标题栏
                     st.markdown(
                         f"""
                         <div style="background-color: #1ABC9C; padding: 15px; border-radius: 8px 8px 0 0; 
@@ -162,7 +155,6 @@ def main():
                         unsafe_allow_html=True
                     )
 
-                    # 带边框的内容卡片
                     with st.container(border=True):
                         st.markdown("**预估新品铺货费**")
                         
@@ -176,7 +168,6 @@ def main():
                             unsafe_allow_html=True
                         )
                         
-                        # 大红色重点结果
                         st.markdown(
                             f"""
                             <div style="margin: 30px 0 20px 0; font-size: 1.8em; color: #D32F2F; font-weight: bold;">
@@ -186,25 +177,20 @@ def main():
                             unsafe_allow_html=True
                         )
 
-                        # 紧接着下方显示铺货门店明细表格
                         st.markdown("**铺货门店**")
-                        
                         store_details_df = pd.DataFrame(
                             list(result['store_details'].items()),
                             columns=['销售规模', '门店数']
                         )
-                        
                         st.dataframe(
                             store_details_df,
                             use_container_width=True,
                             hide_index=True
                         )
                         
-                        # 门店总数说明
                         total_stores = sum(result['store_details'].values())
                         st.caption(f"计算池中的门店数量: {total_stores:,} (全集团)")
 
-                    # 规则说明（保持在最下方）
                     with st.expander("规则说明"):
                         rule_pdf_path = os.path.join(project_root, "data", "rule_description.pdf")
                         if os.path.exists(rule_pdf_path):
@@ -218,71 +204,131 @@ def main():
                 except Exception as e:
                     st.error(f"计算出错: {e}")
 
-    # --- Tab 2: 批量计算器（保持原有逻辑，仅小优化）---
+    # --- Tab 2: 批量计算器（新增字段 + 铺货门店数量优化）---
     with tab2:
-        st.header("批量费用计算")
-        
-        template_path = os.path.join(project_root, "data", "batch_template.xlsx")
-        if os.path.exists(template_path):
-            with open(template_path, "rb") as f:
-                st.download_button("📥 下载导入模板", f, file_name="batch_template.xlsx")
-        else:
-            st.warning("未找到模板文件 (请先运行 setup_data.py 生成)")
+        st.header("📂 批量新品费用计算")
+        st.markdown("快速为多款新品一次性计算铺货费用，支持黄色/蓝色/绿色/自定义通道混合计算")
 
-        uploaded_batch = st.file_uploader("上传填写好的 Excel 文件", type=["xlsx"])
-        
-        if uploaded_batch and st.button("开始批量计算", type="primary"):
-            if store_master_df is None:
-                st.error("请先加载门店主数据（用于非自定义通道）！")
-            else:
-                try:
-                    df = read_excel_safe(uploaded_batch)
-                    results = []
-                    logs = []
-                    progress_bar = st.progress(0)
-
-                    for index, row in df.iterrows():
-                        row_dict = row.to_dict()
-                        row_dict['channel'] = row_dict.get('铺货通道')
-
-                        try:
-                            if row_dict['channel'] == "自定义":
-                                store_counts = extract_manual_counts(row_dict)
-                            else:
-                                store_counts = calc_auto_counts(store_master_df, row_dict['channel'])
-                            
-                            result = calculate_fee(row_dict, store_counts, config)
-                            row_dict['计算结果费用'] = result['final_fee']
-                            row_dict['费用说明'] = result['breakdown_str']
-                        except Exception as e:
-                            row_dict['计算结果费用'] = "Error"
-                            row_dict['费用说明'] = str(e)
-                            logs.append(f"Row {index+1} Error: {e}")
-                        
-                        results.append(row_dict)
-                        progress_bar.progress((index + 1) / len(df))
-
-                    result_df = pd.DataFrame(results)
-                    st.dataframe(result_df, use_container_width=True)
-
-                    from io import BytesIO
-                    output = BytesIO()
-                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                        result_df.to_excel(writer, index=False)
+        with st.expander("📥 需要导入模板？点这里下载（可选）", expanded=False):
+            template_path = os.path.join(project_root, "data", "batch_template.xlsx")
+            if os.path.exists(template_path):
+                with open(template_path, "rb") as f:
                     st.download_button(
-                        "📤 导出计算结果",
-                        output.getvalue(),
-                        file_name="calculation_results.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        "下载导入模板",
+                        f,
+                        file_name="新品铺货费_批量导入模板.xlsx",
+                        use_container_width=True,
+                        type="primary"
                     )
+                #st.info("💡 如果你已有填写好的文件，可直接上传并计算。")
+            else:
+                st.warning("未找到模板文件")
 
-                    if logs:
-                        st.warning("部分行计算出错，请检查导出文件或下方日志")
-                        with st.expander("错误日志"):
-                            st.write(logs)
+        st.markdown("---")
 
-                except Exception as e:
-                    st.error(f"处理文件失败: {e}")
+        st.markdown("#### 📤 上传批量文件")
+        uploaded_batch = st.file_uploader(
+            "支持Excel 文件（.xlsx 格式）",
+            type=["xlsx"],
+            help="上传后即可一键计算"
+        )
+
+        if uploaded_batch:
+            st.markdown("#### 🚀 开始计算")
+            if st.button("开始批量计算", type="primary", use_container_width=True):
+                if store_master_df is None:
+                    st.error("❌ 请先在左侧边栏加载门店主数据！")
+                else:
+                    try:
+                        df = read_excel_safe(uploaded_batch)
+
+                        with st.spinner("正在批量计算，请稍等..."):
+                            results = []
+                            logs = []
+                            progress_bar = st.progress(0)
+                            status_text = st.empty()
+
+                            for index, row in df.iterrows():
+                                status_text.text(f"处理中：第 {index + 1}/{len(df)} 行 - {row.get('商品名称', '未知商品')}")
+                                
+                                row_dict = row.to_dict()
+                                row_dict['channel'] = row_dict.get('铺货通道')
+
+                                try:
+                                    if row_dict['channel'] == "自定义":
+                                        store_counts = extract_manual_counts(row_dict)
+                                    else:
+                                        store_counts = calc_auto_counts(store_master_df, row_dict['channel'])
+                                    
+                                    result = calculate_fee(row_dict, store_counts, config)
+
+                                    # 新增字段：理论费用、折扣、折后费用
+                                    row_dict['理论总新品铺货费 (元)'] = int(result['theoretical_fee'])
+                                    row_dict['折扣'] = result['discount_factor']
+                                    row_dict['折后总新品铺货费 (元)'] = int(result['final_fee'])  # 保留原字段，兼容导出
+
+                                    # 优化铺货门店数量：显示典型门店数量
+                                    store_desc = []
+                                    for store_type, count in result['store_details'].items():
+                                        if count > 0:
+                                            store_desc.append(f"{store_type}: {count}")
+                                    row_dict['铺货门店数量'] = ", ".join(store_desc) if store_desc else "无铺货门店"
+
+                                except Exception as e:
+                                    row_dict['理论总新品铺货费 (元)'] = None
+                                    row_dict['折扣'] = None
+                                    row_dict['折后总新品铺货费 (元)'] = None
+                                    row_dict['铺货门店数量'] = f"错误: {str(e)}"
+                                    logs.append(f"第 {index+1} 行 ({row.get('商品名称','未知')}): {e}")
+                                
+                                results.append(row_dict)
+                                progress_bar.progress((index + 1) / len(df))
+
+                            result_df = pd.DataFrame(results)
+                            status_text.success("🎉 批量计算完成！")
+
+                        st.markdown("#### 📊 计算结果")
+
+                        # 推荐列顺序，让关键字段靠前
+                        cols_order = ['商品名称', '商品品类', 'SKU数', '铺货通道', '理论总新品铺货费 (元)', '折扣', '折后总新品铺货费 (元)', '铺货门店数量']
+                        remaining_cols = [col for col in result_df.columns if col not in cols_order]
+                        display_cols = cols_order + remaining_cols
+                        # 一行代码彻底排除 'channel'（不区分大小写）
+                        display_cols = [col for col in display_cols if col.lower() != 'channel']
+
+                        st.dataframe(
+                            result_df[display_cols],
+                            use_container_width=True,
+                            hide_index=False
+                        )
+
+                        # 总费用汇总
+                        valid_fees = result_df['折后总新品铺货费 (元)'].dropna()
+                        if not valid_fees.empty:
+                            total_fee = int(valid_fees.sum())
+                            st.success(f"🎯 本次批量计算 **{len(valid_fees)}** 款新品，总新品铺货费：**{total_fee:,} 元**")
+
+                        # 导出完整结果
+                        output = BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            result_df.to_excel(writer, index=False, sheet_name='计算结果')
+                        
+                        st.download_button(
+                            "📤 导出计算结果",
+                            output.getvalue(),
+                            file_name=f"新品铺货费_批量结果_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+
+                        if logs:
+                            with st.expander("⚠️ 查看错误日志"):
+                                st.write(logs)
+
+                    except Exception as e:
+                        st.error(f"处理文件失败：{e}")
+        else:
+            st.info("👆 请上传批量新品文件，上传后即可一键计算全部新品费用。")
 
 if __name__ == "__main__":
     main()
