@@ -23,7 +23,7 @@ st.set_page_config(page_title="新品铺货费计算器", page_icon="💰", layo
 
 # Load Config
 try:
-    config_path = os.path.join(project_root, "config", "coefficients.yaml")
+    config_path = os.path.join(project_root, "config", "coefficients.xlsx")
     config = load_config(config_path)
 except Exception as e:
     st.error(f"无法加载配置文件: {e}")
@@ -105,7 +105,7 @@ def main():
                 channel = color_selection.split(" ")[1]
             else:
                 channel = "自定义"
-                st.caption("请输入各类型门店数量:")
+                st.caption("请输入各销售规模门店数量:")
                 cc1, cc2, cc3, cc4 = st.columns(4)
                 with cc1:
                     manual_counts["超级旗舰店"] = st.number_input("超级旗舰", min_value=0, key="custom_super")

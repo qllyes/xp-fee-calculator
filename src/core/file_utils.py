@@ -3,7 +3,7 @@ import io
 import tempfile
 import os
 
-def read_excel_safe(file_path_or_buffer, dtype_spec=None) -> pd.DataFrame:
+def read_excel_safe(file_path_or_buffer, dtype_spec=None, **kwargs) -> pd.DataFrame:
     """
     安全的Excel读取方法 (移植自 xp-analysis-map)。
     通过保存为临时文件来解决某些加密或流式读取的问题。
@@ -33,7 +33,7 @@ def read_excel_safe(file_path_or_buffer, dtype_spec=None) -> pd.DataFrame:
         for engine in engines:
             try:
                 # 在读取时传入dtype参数
-                return pd.read_excel(temp_file_path, engine=engine, dtype=dtype_spec)
+                return pd.read_excel(temp_file_path, engine=engine, dtype=dtype_spec, **kwargs)
             except Exception as e:
                 last_exception = e
                 continue

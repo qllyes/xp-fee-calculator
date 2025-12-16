@@ -24,8 +24,8 @@ def calc_auto_counts(store_master_df, channel):
     elif channel == "绿色":
         valid_types = ["超级旗舰店", "旗舰店", "标准店", "普通店"]
     
-    filtered_df = store_master_df[store_master_df["门店类型"].isin(valid_types)]
-    counts = filtered_df["门店类型"].value_counts().to_dict()
+    filtered_df = store_master_df[store_master_df["销售规模"].isin(valid_types)]
+    counts = filtered_df["销售规模"].value_counts().to_dict()
     
     # Ensure all types are present in the dict with 0 if missing, for consistency
     all_types = ["超级旗舰店", "旗舰店", "标准店", "普通店"]
