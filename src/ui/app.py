@@ -55,7 +55,7 @@ def main():
     # --- Tabs ---
     tab1, tab2 = st.tabs(["📝 单品计算器", "📂 批量计算器"])
 
-    # --- Tab 1: 单品计算器（保持完美布局）---
+    # --- Tab 1: 单品计算器 ---
     with tab1:
         with st.container(border=True):
             st.markdown("#### 📝 通道计算器 -- 输入信息")
@@ -204,19 +204,24 @@ def main():
                 except Exception as e:
                     st.error(f"计算出错: {e}")
 
-    # --- Tab 2: 批量计算器（新增字段 + 铺货门店数量优化）---
+    # --- Tab 2: 批量计算器（结果仅预览前5条）---
     with tab2:
-        st.header("📂 批量新品费用计算")
-        st.markdown("快速为多款新品一次性计算铺货费用，支持黄色/蓝色/绿色/自定义通道混合计算")
+        st.header("📂 批量费用计算")
+        st.markdown(
+    "<p style='color: gray; font-size: 0.95em; margin-top: -10px; margin-bottom: 20px;'>"
+    "快速为多款新品一次性计算铺货费用，支持黄色/蓝色/绿色/自定义通道混合计算"
+    "</p>",
+    unsafe_allow_html=True
+)
 
-        with st.expander("📥 需要导入模板？点这里下载（可选）", expanded=False):
+        with st.expander("📥 需要模板？点这里下载（可选）", expanded=False):
             template_path = os.path.join(project_root, "data", "batch_template.xlsx")
             if os.path.exists(template_path):
                 with open(template_path, "rb") as f:
                     st.download_button(
                         "下载导入模板",
                         f,
-                        file_name="新品铺货费_批量导入模板.xlsx",
+                        file_name="新品铺货费_批量模板.xlsx",
                         use_container_width=True,
                         type="primary"
                     )
@@ -252,22 +257,20 @@ def main():
                                 status_text.text(f"处理中：第 {index + 1}/{len(df)} 行 - {row.get('商品名称', '未知商品')}")
                                 
                                 row_dict = row.to_dict()
-                                row_dict['channel'] = row_dict.get('铺货通道')
 
                                 try:
-                                    if row_dict['channel'] == "自定义":
+                                    channel_name = row_dict.get('铺货通道')
+                                    if channel_name == "自定义":
                                         store_counts = extract_manual_counts(row_dict)
                                     else:
-                                        store_counts = calc_auto_counts(store_master_df, row_dict['channel'])
+                                        store_counts = calc_auto_counts(store_master_df, channel_name)
                                     
                                     result = calculate_fee(row_dict, store_counts, config)
 
-                                    # 新增字段：理论费用、折扣、折后费用
                                     row_dict['理论总新品铺货费 (元)'] = int(result['theoretical_fee'])
                                     row_dict['折扣'] = result['discount_factor']
-                                    row_dict['折后总新品铺货费 (元)'] = int(result['final_fee'])  # 保留原字段，兼容导出
+                                    row_dict['折后总新品铺货费 (元)'] = int(result['final_fee'])
 
-                                    # 优化铺货门店数量：显示典型门店数量
                                     store_desc = []
                                     for store_type, count in result['store_details'].items():
                                         if count > 0:
@@ -287,20 +290,30 @@ def main():
                             result_df = pd.DataFrame(results)
                             status_text.success("🎉 批量计算完成！")
 
-                        st.markdown("#### 📊 计算结果")
+                        st.markdown(
+                            """
+                            #### 📊 计算结果 <span style="color: gray; font-size: 0.9em;">（仅预览前5条）</span>
+                            """,
+                            unsafe_allow_html=True
+                        )
 
-                        # 推荐列顺序，让关键字段靠前
+                        # 推荐列顺序 + 排除 channel
                         cols_order = ['商品名称', '商品品类', 'SKU数', '铺货通道', '理论总新品铺货费 (元)', '折扣', '折后总新品铺货费 (元)', '铺货门店数量']
                         remaining_cols = [col for col in result_df.columns if col not in cols_order]
                         display_cols = cols_order + remaining_cols
-                        # 一行代码彻底排除 'channel'（不区分大小写）
                         display_cols = [col for col in display_cols if col.lower() != 'channel']
 
+                        # 仅显示前5条预览
+                        preview_df = result_df[display_cols].head(5)
                         st.dataframe(
-                            result_df[display_cols],
+                            preview_df,
                             use_container_width=True,
                             hide_index=False
                         )
+
+                        # 当数据超过5条时提示用户
+                        if len(result_df) > 5:
+                            st.info(f"💡 共计算 **{len(result_df)}** 款新品，仅显示前5条预览。完整结果请点击下方导出按钮获取。")
 
                         # 总费用汇总
                         valid_fees = result_df['折后总新品铺货费 (元)'].dropna()
@@ -308,13 +321,13 @@ def main():
                             total_fee = int(valid_fees.sum())
                             st.success(f"🎯 本次批量计算 **{len(valid_fees)}** 款新品，总新品铺货费：**{total_fee:,} 元**")
 
-                        # 导出完整结果
+                        # 导出完整结果（包含所有记录）
                         output = BytesIO()
                         with pd.ExcelWriter(output, engine='openpyxl') as writer:
                             result_df.to_excel(writer, index=False, sheet_name='计算结果')
                         
                         st.download_button(
-                            "📤 导出计算结果",
+                            "📤 导出完整结果",
                             output.getvalue(),
                             file_name=f"新品铺货费_批量结果_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
