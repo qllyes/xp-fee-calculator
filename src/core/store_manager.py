@@ -18,17 +18,17 @@ def calc_auto_counts(store_master_df, channel):
     
     valid_types = []
     if channel == "黄色":
-        valid_types = ["超级旗舰店", "旗舰店"]
+        valid_types = ["超级旗舰店", "旗舰店", "大店"]
     elif channel == "蓝色":
-        valid_types = ["超级旗舰店", "旗舰店", "标准店"]
+        valid_types = ["超级旗舰店", "旗舰店", "大店", "中店","小店"]
     elif channel == "绿色":
-        valid_types = ["超级旗舰店", "旗舰店", "标准店", "普通店"]
+        valid_types = ["超级旗舰店", "旗舰店", "大店", "中店","小店","成长店"]
     
     filtered_df = store_master_df[store_master_df["销售规模"].isin(valid_types)]
     counts = filtered_df["销售规模"].value_counts().to_dict()
     
     # Ensure all types are present in the dict with 0 if missing, for consistency
-    all_types = ["超级旗舰店", "旗舰店", "标准店", "普通店"]
+    all_types = ["超级旗舰店", "旗舰店", "大店", "中店","小店","成长店"]
     for t in all_types:
         if t not in counts:
             counts[t] = 0
@@ -45,8 +45,10 @@ def extract_manual_counts(row_data):
     mapping = {
         "(自定义)超级旗舰店数": "超级旗舰店",
         "(自定义)旗舰店数": "旗舰店",
-        "(自定义)标准店数": "标准店",
-        "(自定义)普通店数": "普通店"
+        "(自定义)大店数": "大店",
+        "(自定义)中店数": "中店",
+        "(自定义)小店数": "小店",
+        "(自定义)成长店数": "成长店"
     }
     
     for key, store_type in mapping.items():

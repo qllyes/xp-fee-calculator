@@ -4,7 +4,8 @@ import os
 from sqlalchemy import create_engine
 
 # 异步操作脚本，不在main.py内，
-# 门店基础表，取上月最后一天的门店表来做门店基础表
+# 门店基础表，取上月最后一天的门店表来做门店基础表，
+# #从数据库加载到本地excel，提高前端响应速度
 
 # --- Database Configuration ---
 DB_CONFIG = {
@@ -23,13 +24,14 @@ SELECT DISTINCT
     t1.lev3_org_name_xp AS `提报战区`,
     t1.sales_scan_name AS `销售规模`,
     t2.forbid_goods_aprl_types_code AS `受限批文分类编码`,
-    t2.forbid_goods_aprl_types_name AS `受限批文分类名称`
+    t2.forbid_goods_aprl_types_name AS `受限批文分类名称`,
+    t1.dt as `门店表更新时间`
 FROM xp_shops_info_qll_dfp t1
 LEFT JOIN mid_shop_med_insu_forbid_sale_goodstype_dfn t2
     ON t1.shop_code = t2.shop_code
 WHERE t1.shop_age_and_type_code NOT IN ('5', '6', '7', '11')
   AND t1.busi_ascr_code IN ('1', '4')
-  AND t1.dt = '2025-12-15'
+  AND t1.dt = '2025-12-25'
 """
 
 def sync_data():

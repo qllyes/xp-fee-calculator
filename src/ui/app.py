@@ -21,10 +21,18 @@ from src.core.file_utils import read_excel_safe
 # Page Config
 st.set_page_config(page_title="新品铺货费计算器", page_icon="💰", layout="wide")
 
-# Load Config
+# Load Config with Cache
+@st.cache_data
+def get_config(path):
+    return load_config(path)
+
+@st.cache_data
+def get_store_master(path):
+    return load_store_master(path)
+
 try:
     config_path = os.path.join(project_root, "config", "coefficients.xlsx")
-    config = load_config(config_path)
+    config = get_config(config_path)
 except Exception as e:
     st.error(f"无法加载配置文件: {e}")
     st.stop()
@@ -32,25 +40,26 @@ except Exception as e:
 def main():
     st.title("💰 新品铺货费计算器")
 
-    # --- Sidebar: 全局配置 ---
-    st.sidebar.header("全局配置")
+    # --- Data Loading (Auto) ---
     store_master_path = os.path.join(project_root, "data", "store_master.xlsx")
-    uploaded_master = st.sidebar.file_uploader("上传门店主数据 (覆盖默认)", type=["xlsx"])
-    
-    if uploaded_master:
+    store_master_df = None
+    update_time = "未知"
+
+    if os.path.exists(store_master_path):
         try:
-            store_master_df = pd.read_excel(uploaded_master, engine='openpyxl')
-            st.sidebar.success(f"已加载: {len(store_master_df)} 家门店")
+            store_master_df = get_store_master(store_master_path)
+            if "门店表更新时间" in store_master_df.columns:
+                # 取第一行的更新时间作为显示值
+                update_time = str(store_master_df["门店表更新时间"].iloc[0])
         except Exception as e:
-            st.sidebar.error(f"加载失败: {e}")
-            store_master_df = None
-    else:
-        if os.path.exists(store_master_path):
-            store_master_df = load_store_master(store_master_path)
-            st.sidebar.info(f"使用默认数据: {len(store_master_df)} 家门店")
-        else:
-            st.sidebar.warning(f"未找到默认门店数据: {store_master_path}")
-            store_master_df = None
+            st.error(f"加载门店数据失败: {e}")
+    
+    # 显示隐藏式更新时间
+    st.markdown(
+        f"<p style='color: #BDC3C7; font-size: 0.8em; text-align: right; margin-top: -20px;'>"
+        f"门店表更新于: {update_time}</p>",
+        unsafe_allow_html=True
+    )
 
     # --- Tabs ---
     tab1, tab2 = st.tabs(["📝 单品计算器", "📂 批量计算器"])
@@ -106,19 +115,25 @@ def main():
             else:
                 channel = "自定义"
                 st.caption("请输入各销售规模门店数量:")
-                cc1, cc2, cc3, cc4 = st.columns(4)
+                cc1, cc2, cc3 = st.columns(3)
                 with cc1:
                     manual_counts["超级旗舰店"] = st.number_input("超级旗舰", min_value=0, key="custom_super")
                 with cc2:
                     manual_counts["旗舰店"] = st.number_input("旗舰", min_value=0, key="custom_flag")
                 with cc3:
-                    manual_counts["标准店"] = st.number_input("标准", min_value=0, key="custom_std")
+                    manual_counts["大店"] = st.number_input("大店", min_value=0, key="custom_big")
+                
+                cc4, cc5, cc6 = st.columns(3)
                 with cc4:
-                    manual_counts["普通店"] = st.number_input("普通", min_value=0, key="custom_norm")
+                    manual_counts["中店"] = st.number_input("中店", min_value=0, key="custom_mid")
+                with cc5:
+                    manual_counts["小店"] = st.number_input("小店", min_value=0, key="custom_small")
+                with cc6:
+                    manual_counts["成长店"] = st.number_input("成长店", min_value=0, key="custom_grow")
 
         if st.button("计算费用", type="primary", use_container_width=True):
             if store_master_df is None and channel != "自定义":
-                st.error("请先加载门店主数据！")
+                st.error("❌ 未找到门店主数据，请检查 data/store_master.xlsx 文件！")
             else:
                 row_data = {
                     "商品品类": category,
@@ -204,15 +219,15 @@ def main():
                 except Exception as e:
                     st.error(f"计算出错: {e}")
 
-    # --- Tab 2: 批量计算器（结果仅预览前5条）---
+    # --- Tab 2: 批量计算器 ---
     with tab2:
         st.header("📂 批量费用计算")
         st.markdown(
-    "<p style='color: gray; font-size: 0.95em; margin-top: -10px; margin-bottom: 20px;'>"
-    "快速为多款新品一次性计算铺货费用，支持黄色/蓝色/绿色/自定义通道混合计算"
-    "</p>",
-    unsafe_allow_html=True
-)
+            "<p style='color: gray; font-size: 0.95em; margin-top: -10px; margin-bottom: 20px;'>"
+            "快速为多款新品一次性计算铺货费用，支持黄色/蓝色/绿色/自定义通道混合计算"
+            "</p>",
+            unsafe_allow_html=True
+        )
 
         with st.expander("📥 需要模板？点这里下载（可选）", expanded=False):
             template_path = os.path.join(project_root, "data", "batch_template.xlsx")
@@ -225,7 +240,6 @@ def main():
                         use_container_width=True,
                         type="primary"
                     )
-                #st.info("💡 如果你已有填写好的文件，可直接上传并计算。")
             else:
                 st.warning("未找到模板文件")
 
@@ -242,7 +256,7 @@ def main():
             st.markdown("#### 🚀 开始计算")
             if st.button("开始批量计算", type="primary", use_container_width=True):
                 if store_master_df is None:
-                    st.error("❌ 请先在左侧边栏加载门店主数据！")
+                    st.error("❌ 未找到门店主数据，请检查 data/store_master.xlsx 文件！")
                 else:
                     try:
                         df = read_excel_safe(uploaded_batch)
@@ -297,13 +311,11 @@ def main():
                             unsafe_allow_html=True
                         )
 
-                        # 推荐列顺序 + 排除 channel
                         cols_order = ['商品名称', '商品品类', 'SKU数', '铺货通道', '理论总新品铺货费 (元)', '折扣', '折后总新品铺货费 (元)', '铺货门店数量']
                         remaining_cols = [col for col in result_df.columns if col not in cols_order]
                         display_cols = cols_order + remaining_cols
                         display_cols = [col for col in display_cols if col.lower() != 'channel']
 
-                        # 仅显示前5条预览
                         preview_df = result_df[display_cols].head(5)
                         st.dataframe(
                             preview_df,
@@ -311,17 +323,14 @@ def main():
                             hide_index=False
                         )
 
-                        # 当数据超过5条时提示用户
                         if len(result_df) > 5:
                             st.info(f"💡 共计算 **{len(result_df)}** 款新品，仅显示前5条预览。完整结果请点击下方导出按钮获取。")
 
-                        # 总费用汇总
                         valid_fees = result_df['折后总新品铺货费 (元)'].dropna()
                         if not valid_fees.empty:
                             total_fee = int(valid_fees.sum())
                             st.success(f"🎯 本次批量计算 **{len(valid_fees)}** 款新品，总新品铺货费：**{total_fee:,} 元**")
 
-                        # 导出完整结果（包含所有记录）
                         output = BytesIO()
                         with pd.ExcelWriter(output, engine='openpyxl') as writer:
                             result_df.to_excel(writer, index=False, sheet_name='计算结果')
