@@ -14,7 +14,7 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 from src.core.config_loader import load_config
-from src.core.store_manager import load_store_master, calc_auto_counts, extract_manual_counts
+from src.core.store_manager import load_store_master, calc_auto_counts, extract_manual_counts, load_xp_mapping
 from src.core.calculator import calculate_fee
 from src.core.file_utils import read_excel_safe
 
@@ -29,6 +29,10 @@ def get_config(path):
 @st.cache_data
 def get_store_master(path):
     return load_store_master(path)
+
+@st.cache_data
+def get_xp_mapping(path):
+    return load_xp_mapping(path)
 
 try:
     config_path = os.path.join(project_root, "config", "coefficients.xlsx")
@@ -54,6 +58,10 @@ def main():
         except Exception as e:
             st.error(f"加载门店数据失败: {e}")
     
+    # Load XP Mapping
+    xp_mapping_path = os.path.join(project_root, "data", "处方类别与批文分类表.xlsx")
+    xp_map = get_xp_mapping(xp_mapping_path)
+
     # 显示隐藏式更新时间
     st.markdown(
         f"<p style='color: #BDC3C7; font-size: 0.8em; text-align: right; margin-top: -20px;'>"
@@ -73,13 +81,13 @@ def main():
             with c1:
                 category = st.selectbox("新品大类", list(config["base_fees"].keys()))
             with c2:
-                sku_count = st.number_input("同一供应商单次引进SKU数", min_value=1, value=1)
-                
+                supplier_type = st.selectbox("供应商类型", list(config["supplier_type_coeffs"].keys()))
+
             c3, c4 = st.columns(2)
             with c3:
-                return_policy = st.selectbox("退货条件", list(config["return_policy_coeffs"].keys()))
+                sku_count = st.number_input("同一供应商单次引进SKU数", min_value=1, value=1)
             with c4:
-                payment = st.selectbox("付款方式", list(config["payment_coeffs"].keys()))
+                return_policy = st.selectbox("退货条件", list(config["return_policy_coeffs"].keys()))
                 
             c5, c6 = st.columns(2)
             with c5:
@@ -89,10 +97,21 @@ def main():
                 
             c7, c8 = st.columns(2)
             with c7:
-                supplier_type = st.selectbox("供应商类型", list(config["supplier_type_coeffs"].keys()))
+                payment = st.selectbox("付款方式", list(config["payment_coeffs"].keys()))
             with c8:
-                pass
+                # 处方类别选择
+                # 优先从 config 读取列表，若无则尝试从映射表的 keys 读取，都无则显示默认
+                xp_options = config.get("prescription_categories", [])
+                if not xp_options and xp_map:
+                    xp_options = list(xp_map.keys())
+                
+                if not xp_options:
+                    xp_options = ["无 (未配置处方类别)"]
 
+                selected_xp_category = st.selectbox("处方类别 (筛选受限门店)", xp_options)
+
+            # 获取选中的处方类别对应的批文编码
+            target_xp_code = xp_map.get(selected_xp_category) if xp_map else None
             st.markdown("---")
             
             st.markdown("**通道选择**")
@@ -117,9 +136,9 @@ def main():
                 st.caption("请输入各销售规模门店数量:")
                 cc1, cc2, cc3 = st.columns(3)
                 with cc1:
-                    manual_counts["超级旗舰店"] = st.number_input("超级旗舰", min_value=0, key="custom_super")
+                    manual_counts["超级旗舰店"] = st.number_input("超级旗舰店", min_value=0, key="custom_super")
                 with cc2:
-                    manual_counts["旗舰店"] = st.number_input("旗舰", min_value=0, key="custom_flag")
+                    manual_counts["旗舰店"] = st.number_input("旗舰店", min_value=0, key="custom_flag")
                 with cc3:
                     manual_counts["大店"] = st.number_input("大店", min_value=0, key="custom_big")
                 
@@ -131,12 +150,13 @@ def main():
                 with cc6:
                     manual_counts["成长店"] = st.number_input("成长店", min_value=0, key="custom_grow")
 
-        if st.button("计算费用", type="primary", use_container_width=True):
+        if st.button("开始计算", type="primary", use_container_width=True):
             if store_master_df is None and channel != "自定义":
                 st.error("❌ 未找到门店主数据，请检查 data/store_master.xlsx 文件！")
             else:
                 row_data = {
                     "商品品类": category,
+                    "处方类别": selected_xp_category, # 记录一下
                     "SKU数": sku_count,
                     "channel": channel,
                     "预估毛利率(%)": gross_margin,
@@ -151,10 +171,27 @@ def main():
                         row_data[f"(自定义){k}数"] = v
 
                 try:
+                    excluded_count = 0
                     if channel == "自定义":
                         store_counts = extract_manual_counts(row_data)
+                        st.info("💡 自定义通道模式下，不进行'受限批文'的门店剔除，按手动输入数量计算。")
                     else:
-                        store_counts = calc_auto_counts(store_master_df, channel)
+                        # 1. 传入 target_xp_code 进行自动过滤（得到实际参与计算的门店）
+                        store_counts = calc_auto_counts(
+                            store_master_df, 
+                            channel, 
+                            restricted_xp_code=target_xp_code
+                        )
+
+                        # 2. 如果设置了限制码，额外计算一次未过滤的总数，以得出剔除的数量
+                        if target_xp_code:
+                            raw_counts = calc_auto_counts(
+                                store_master_df, 
+                                channel, 
+                                restricted_xp_code=None
+                            )
+                            # 剔除数 = 原始通道总数 - 过滤后通道总数
+                            excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
                     
                     result = calculate_fee(row_data, store_counts, config)
 
@@ -197,6 +234,18 @@ def main():
                             list(result['store_details'].items()),
                             columns=['销售规模', '门店数']
                         )
+
+                        # --- 修复排序逻辑 ---
+                        sort_order = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
+                        # 将'销售规模'列转换为有序分类类型，以便正确排序
+                        store_details_df['销售规模'] = pd.Categorical(
+                            store_details_df['销售规模'], 
+                            categories=sort_order, 
+                            ordered=True
+                        )
+
+                        store_details_df = store_details_df.sort_values('销售规模')
+
                         st.dataframe(
                             store_details_df,
                             use_container_width=True,
@@ -204,7 +253,15 @@ def main():
                         )
                         
                         total_stores = sum(result['store_details'].values())
-                        st.caption(f"计算池中的门店数量: {total_stores:,} (全集团)")
+                        
+                        # 构建底部统计文案
+                        footer_text = f"计算池中的门店数量: {total_stores:,} (全集团)"
+                        if channel != "自定义" and target_xp_code:
+                            footer_text += f" | 剔除受限门店数: {excluded_count}"
+                        elif channel != "自定义":
+                            footer_text += f" | 无受限门店剔除"
+                            
+                        st.caption(footer_text)
 
                     with st.expander("规则说明"):
                         rule_pdf_path = os.path.join(project_root, "data", "rule_description.pdf")
@@ -274,16 +331,33 @@ def main():
 
                                 try:
                                     channel_name = row_dict.get('铺货通道')
+                                    
+                                    # --- 批量计算也尝试获取处方类别限制 ---
+                                    # 假设模板里有 "处方类别" 列
+                                    batch_xp_cat = row_dict.get('处方类别')
+                                    batch_target_code = None
+                                    if batch_xp_cat and xp_map:
+                                        batch_target_code = xp_map.get(str(batch_xp_cat).strip())
+                                    # ----------------------------------
+
                                     if channel_name == "自定义":
                                         store_counts = extract_manual_counts(row_dict)
                                     else:
-                                        store_counts = calc_auto_counts(store_master_df, channel_name)
+                                        store_counts = calc_auto_counts(
+                                            store_master_df, 
+                                            channel_name,
+                                            restricted_xp_code=batch_target_code
+                                        )
                                     
                                     result = calculate_fee(row_dict, store_counts, config)
 
                                     row_dict['理论总新品铺货费 (元)'] = int(result['theoretical_fee'])
                                     row_dict['折扣'] = result['discount_factor']
                                     row_dict['折后总新品铺货费 (元)'] = int(result['final_fee'])
+                                    
+                                    # 记录是否触发了限制
+                                    if batch_target_code:
+                                        row_dict['备注'] = f"已按类别[{batch_xp_cat}]剔除受限门店"
 
                                     store_desc = []
                                     for store_type, count in result['store_details'].items():
@@ -311,7 +385,9 @@ def main():
                             unsafe_allow_html=True
                         )
 
-                        cols_order = ['商品名称', '商品品类', 'SKU数', '铺货通道', '理论总新品铺货费 (元)', '折扣', '折后总新品铺货费 (元)', '铺货门店数量']
+                        cols_order = ['商品名称', '商品品类', '处方类别', 'SKU数', '铺货通道', '理论总新品铺货费 (元)', '折扣', '折后总新品铺货费 (元)', '铺货门店数量', '备注']
+                        # 确保存在的列才显示
+                        cols_order = [c for c in cols_order if c in result_df.columns]
                         remaining_cols = [col for col in result_df.columns if col not in cols_order]
                         display_cols = cols_order + remaining_cols
                         display_cols = [col for col in display_cols if col.lower() != 'channel']

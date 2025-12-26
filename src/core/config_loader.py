@@ -63,4 +63,16 @@ def load_config(config_path="config/coefficients.xlsx"):
         df = xls_dict['最低保底费']
         config['min_fee_floors'] = dict(zip(df['新品大类'], df['保底费']))
 
+    # 9. Prescription Categories (New)
+    # 假设 '处方类别' sheet页有一列叫 '处方类别'
+    if '处方类别' in xls_dict:
+        df = xls_dict['处方类别']
+        if not df.empty and df.shape[1] > 0:
+            # 默认取第一列作为选项列表
+            config['prescription_categories'] = df.iloc[:, 0].dropna().astype(str).tolist()
+        else:
+            config['prescription_categories'] = []
+    else:
+        config['prescription_categories'] = []
+
     return config
