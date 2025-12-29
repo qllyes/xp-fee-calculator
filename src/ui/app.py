@@ -151,30 +151,31 @@ def main():
                 # 自定义模式下的两种子模式选择
                 custom_sub_mode = st.radio(
                     "自定义输入方式:",
-                    ["手动输入数量", "勾选销售规模"],
+                    ["手动输入门店数", "自定义销售规模"],
                     horizontal=True
                 )
                 
                 if "手动输入" in custom_sub_mode:
                     st.caption("请输入各销售规模门店数量:")
-                    cc1, cc2, cc3 = st.columns(3)
-                    with cc1:
-                        manual_counts["超级旗舰店"] = st.number_input("超级旗舰店", min_value=0, key="custom_super")
-                    with cc2:
-                        manual_counts["旗舰店"] = st.number_input("旗舰店", min_value=0, key="custom_flag")
-                    with cc3:
-                        manual_counts["大店"] = st.number_input("大店", min_value=0, key="custom_big")
+                    # 创建一行 6 列的布局
+                    col_inputs = st.columns(6)
                     
-                    cc4, cc5, cc6 = st.columns(3)
-                    with cc4:
+                    # 依次在每一列中放置输入框
+                    with col_inputs[0]:
+                        manual_counts["超级旗舰店"] = st.number_input("超级旗舰店", min_value=0, key="custom_super")
+                    with col_inputs[1]:
+                        manual_counts["旗舰店"] = st.number_input("旗舰店", min_value=0, key="custom_flag")
+                    with col_inputs[2]:
+                        manual_counts["大店"] = st.number_input("大店", min_value=0, key="custom_big")
+                    with col_inputs[3]:
                         manual_counts["中店"] = st.number_input("中店", min_value=0, key="custom_mid")
-                    with cc5:
+                    with col_inputs[4]:
                         manual_counts["小店"] = st.number_input("小店", min_value=0, key="custom_small")
-                    with cc6:
+                    with col_inputs[5]:
                         manual_counts["成长店"] = st.number_input("成长店", min_value=0, key="custom_grow")
                 else:
                     # 勾选规模模式
-                    st.caption("请选择需要铺货的销售规模 (系统将根据选择自动计算并剔除受限门店):")
+                    st.caption("请选择需要铺货的销售规模")
                     all_types = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
                     selected_custom_types = st.multiselect(
                         "销售规模",
@@ -295,7 +296,7 @@ def main():
                             st.markdown(
                                 f"""
                                 <div style="font-size: 1rem; color: #555;">折后总新品铺货费(元)</div>
-                                <div style="font-size: 1.8rem; color: #D32F2F; font-weight: bold;">
+                                <div style="font-size: 2.25rem; color: #D32F2F; font-weight: bold;">
                                     {int(result['final_fee']):,}
                                 </div>
                                 """, 
@@ -309,43 +310,70 @@ def main():
 
                         # 2. 详细数据展示 (Split Tables)
                         
-                        # A. 计算系数表 (Wide Format)
-                        st.markdown("📉 计算系数")
-                        coeffs = result.get('coefficients', [])
-                        if coeffs:
-                            # 转为字典: {系数名: 数值}
-                            coeff_dict = {name: val for name, val in coeffs}
-                            df_coeffs = pd.DataFrame([coeff_dict])
-                            st.dataframe(
-                                df_coeffs,
-                                use_container_width=True,
-                                hide_index=True
-                            )
-
-                        # B. 门店分布表 (Wide Format)
-                        st.markdown("🏬 门店分布")
-                        store_order = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
-                        # 确保所有类型都有列，没有的填0
-                        store_dict = {stype: result['store_details'].get(stype, 0) for stype in store_order}
-                        df_stores = pd.DataFrame([store_dict])
-                        st.dataframe(
-                            df_stores,
-                            use_container_width=True,
-                            hide_index=True
-                        )
-
-                        total_stores = sum(result['store_details'].values())
-                        
-                        # 构建底部统计文案
-                        footer_text = f"计算池中的门店数量: {total_stores:,}"
-                        if is_auto_calc_mode and target_xp_code:
-                             footer_text += f" | 剔除受限门店数: {excluded_count}"
-                        elif is_auto_calc_mode:
-                             footer_text += f" | 无受限门店剔除"
-                        else:
-                             footer_text += " (手动输入模式)"
+                        # 使用 Expander (折叠面板) 实现“低调隐秘”
+                        # expanded=False 确保默认是收起的，不喧宾夺主
+                        with st.expander("👁️ 查看计算过程详情 (门店分布&系数)", expanded=False):
                             
-                        st.caption(footer_text)
+                            # 创建左右两列，左边放系数，右边放门店，显得紧凑规整
+                            col_detail_2, col_detail_1 = st.columns(2)
+                            
+                            # --- 左侧：计算系数 (转置为垂直列表) ---
+                            with col_detail_1:
+                                st.markdown("📉 计算系数")
+                                # 将原始数据转换为 "项目 - 数值" 的垂直表格
+                                coeffs_data = {
+                                    "项目": [name for name, _ in result['coefficients']],
+                                    "系数": [val for _, val in result['coefficients']]
+                                }
+                                df_coeffs_vertical = pd.DataFrame(coeffs_data)
+                                
+                                st.dataframe(
+                                    df_coeffs_vertical,
+                                    use_container_width=True,
+                                    hide_index=True,
+                                    column_config={
+                                        "项目": st.column_config.TextColumn("影响因素", width="medium"),
+                                        "系数": st.column_config.NumberColumn("数值", format="%.2f", width="small")
+                                    }
+                                )
+
+                            # --- 右侧：门店分布 (转置为垂直列表) ---
+                            with col_detail_2:
+                                st.markdown("🏬 门店分布")
+                                
+                                # 按照固定顺序展示，哪怕数量为0也显示，保持整齐
+                                store_order = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
+                                store_data = {
+                                    "门店类型": store_order,
+                                    "数量": [result['store_details'].get(t, 0) for t in store_order]
+                                }
+                                df_stores_vertical = pd.DataFrame(store_data)
+                                
+                                st.dataframe(
+                                    df_stores_vertical,
+                                    use_container_width=True,
+                                    hide_index=True,
+                                    column_config={
+                                        "门店类型": st.column_config.TextColumn("销售规模", width="medium"),
+                                        "数量": st.column_config.NumberColumn("门店数", format="%d")
+                                    }
+                                )
+
+                            # 底部的统计说明文字放在展开框内部或者紧挨着底部
+                            total_stores = sum(result['store_details'].values())
+                            # 构建底部统计文案
+                            footer_text = f"计算池中的门店数量: {total_stores:,}"
+                            if is_auto_calc_mode and target_xp_code:
+                                # 场景1：自动计算模式 且 存在受限批文代码 -> 显示剔除数量
+                                footer_text += f" | 剔除受限门店数: {excluded_count}"
+                            elif is_auto_calc_mode:
+                                # 场景2：自动计算模式 但 无受限批文代码 -> 显示无剔除
+                                footer_text += f" | 无受限门店剔除"
+                            else:
+                                # 场景3：手动输入模式 -> 显示手动模式提示
+                                footer_text += " (手动输入模式)"
+                            
+                            st.caption(footer_text)
 
                     with st.expander("规则说明"):
                         rule_pdf_path = os.path.join(project_root, "data", "rule_description.pdf")
