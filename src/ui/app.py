@@ -270,47 +270,68 @@ def main():
                     )
 
                     with st.container(border=True):
-                        st.markdown("**预估新品铺货费**")
-                        
-                        st.markdown(
-                            f"**理论总新品铺货费 (元)**: <span style='font-size:1.2em; color:#333;'>{int(result['theoretical_fee']):,}</span>",
-                            unsafe_allow_html=True
-                        )
-                        
-                        st.markdown(
-                            f"**折扣**: <span style='font-size:1.2em; color:#333;'>{result['discount_factor']:.2f}</span>",
-                            unsafe_allow_html=True
-                        )
-                        
-                        st.markdown(
-                            f"""
-                            <div style="margin: 30px 0 20px 0; font-size: 1.8em; color: #D32F2F; font-weight: bold;">
-                                折后总新品铺货费 (元): {int(result['final_fee']):,}
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
+                        # 1. 费用概览区域 (Top Level Stats)
+                        col_res1, col_res2, col_res3 = st.columns([1, 1, 1.5])
+                        with col_res1:
+                            st.metric("理论总新品铺货费(元)", f"{int(result['theoretical_fee']):,}")
+                        with col_res2:
+                            st.metric("折扣", f"{result['discount_factor']:.2f}")
+                        with col_res3:
+                            # 醒目的最终金额
+                            st.markdown(
+                                f"""
+                                <div style="font-size: 1rem; color: #555;">折后总新品铺货费(元)</div>
+                                <div style="font-size: 1.8rem; color: #D32F2F; font-weight: bold;">
+                                    {int(result['final_fee']):,}
+                                </div>
+                                """, 
+                                unsafe_allow_html=True
+                            )
+                            
+                        if result.get('is_floor_triggered'):
+                            st.caption(f"⚠️ 已触发最低兜底费用: {result['min_floor']}元")
 
-                        st.markdown("**铺货门店**")
-                        store_details_df = pd.DataFrame(
-                            list(result['store_details'].items()),
-                            columns=['销售规模', '门店数']
-                        )
+                        st.divider() # 分割线
 
-                        sort_order = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
-                        store_details_df['销售规模'] = pd.Categorical(
-                            store_details_df['销售规模'], 
-                            categories=sort_order, 
-                            ordered=True
-                        )
-                        store_details_df = store_details_df.sort_values('销售规模')
-
-                        st.dataframe(
-                            store_details_df,
-                            use_container_width=True,
-                            hide_index=True
-                        )
+                        # 2. 综合计算明细表 (Integrated Process Table)
+                        st.markdown("**📊 计算过程明细 (门店分布 & 系数)**")
                         
+                        process_data = []
+
+                        # A. 门店分布 (Base Data)
+                        store_order = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
+                        for stype in store_order:
+                            if stype in result['store_details']:
+                                count = result['store_details'][stype]
+                                process_data.append({
+                                    "指标类型": "🏬 门店分布",
+                                    "指标名称": stype,
+                                    "数值/详情": f"{count}"
+                                })
+                        
+                        # B. 系数调整 (Coefficients)
+                        coeffs = result.get('coefficients', [])
+                        for name, val in coeffs:
+                            process_data.append({
+                                "指标类型": "📉 系数调整",
+                                "指标名称": name,
+                                "数值/详情": f"{val}"
+                            })
+
+                        # 创建并展示 DataFrame
+                        if process_data:
+                            df_process = pd.DataFrame(process_data)
+                            st.dataframe(
+                                df_process,
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={
+                                    "指标类型": st.column_config.TextColumn("类型", width="small"),
+                                    "指标名称": st.column_config.TextColumn("项目名称", width="medium"),
+                                    "数值/详情": st.column_config.TextColumn("数值", width="medium"),
+                                }
+                            )
+
                         total_stores = sum(result['store_details'].values())
                         
                         # 构建底部统计文案

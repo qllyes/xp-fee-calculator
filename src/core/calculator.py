@@ -72,15 +72,19 @@ def calculate_fee(row_data, store_counts, config):
     coeffs.append(("供应商类型系数", supp_coeff))
     
     # 3. Final Calculation
-    final_fee = total_base_fee
     discount_factor = 1.0
     
     breakdown.append(f"\n--- 系数调整 ---")
     for name, val in coeffs:
         discount_factor *= val
         breakdown.append(f"{name}: x{val}")
+        
+    # 先对折扣系数四舍五入保留2位小数
+    discount_factor = round(discount_factor, 2)
+    raw_final_fee = total_base_fee * discount_factor
     
-    final_fee = total_base_fee * discount_factor
+    # 取整逻辑：先取整，若个位数不为0则向上取整到10的倍数
+    final_fee = math.ceil(int(raw_final_fee) / 10) * 10
         
     # 4. Minimum Floor
     min_floor = config.get("min_fee_floors", {}).get(category, 0)
@@ -96,8 +100,9 @@ def calculate_fee(row_data, store_counts, config):
         "final_fee": final_fee,
         "theoretical_fee": total_base_fee,
         "discount_factor": discount_factor,
+        "coefficients": coeffs,
         "breakdown_str": "\n".join(breakdown),
         "is_floor_triggered": is_floor_triggered,
         "min_floor": min_floor,
-        "store_details": store_counts # Passing this back for easy table display
+        "store_details": store_counts 
     }
