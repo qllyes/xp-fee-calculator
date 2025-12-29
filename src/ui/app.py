@@ -100,7 +100,6 @@ def main():
                 payment = st.selectbox("付款方式", list(config["payment_coeffs"].keys()))
             with c8:
                 # 处方类别选择
-                # 优先从 config 读取列表，若无则尝试从映射表的 keys 读取，都无则显示默认
                 xp_options = config.get("prescription_categories", [])
                 if not xp_options and xp_map:
                     xp_options = list(xp_map.keys())
@@ -122,7 +121,9 @@ def main():
             )
             
             channel = "自定义"
+            custom_sub_mode = "手动输入" # 默认为手动
             manual_counts = {}
+            selected_custom_types = []
             
             if "标准通道" in channel_mode:
                 color_selection = st.radio(
@@ -133,30 +134,56 @@ def main():
                 channel = color_selection.split(" ")[1]
             else:
                 channel = "自定义"
-                st.caption("请输入各销售规模门店数量:")
-                cc1, cc2, cc3 = st.columns(3)
-                with cc1:
-                    manual_counts["超级旗舰店"] = st.number_input("超级旗舰店", min_value=0, key="custom_super")
-                with cc2:
-                    manual_counts["旗舰店"] = st.number_input("旗舰店", min_value=0, key="custom_flag")
-                with cc3:
-                    manual_counts["大店"] = st.number_input("大店", min_value=0, key="custom_big")
+                # 自定义模式下的两种子模式选择
+                custom_sub_mode = st.radio(
+                    "自定义输入方式:",
+                    ["手动输入数量", "勾选销售规模"],
+                    horizontal=True
+                )
                 
-                cc4, cc5, cc6 = st.columns(3)
-                with cc4:
-                    manual_counts["中店"] = st.number_input("中店", min_value=0, key="custom_mid")
-                with cc5:
-                    manual_counts["小店"] = st.number_input("小店", min_value=0, key="custom_small")
-                with cc6:
-                    manual_counts["成长店"] = st.number_input("成长店", min_value=0, key="custom_grow")
+                if "手动输入" in custom_sub_mode:
+                    st.caption("请输入各销售规模门店数量:")
+                    cc1, cc2, cc3 = st.columns(3)
+                    with cc1:
+                        manual_counts["超级旗舰店"] = st.number_input("超级旗舰店", min_value=0, key="custom_super")
+                    with cc2:
+                        manual_counts["旗舰店"] = st.number_input("旗舰店", min_value=0, key="custom_flag")
+                    with cc3:
+                        manual_counts["大店"] = st.number_input("大店", min_value=0, key="custom_big")
+                    
+                    cc4, cc5, cc6 = st.columns(3)
+                    with cc4:
+                        manual_counts["中店"] = st.number_input("中店", min_value=0, key="custom_mid")
+                    with cc5:
+                        manual_counts["小店"] = st.number_input("小店", min_value=0, key="custom_small")
+                    with cc6:
+                        manual_counts["成长店"] = st.number_input("成长店", min_value=0, key="custom_grow")
+                else:
+                    # 勾选规模模式
+                    st.caption("请选择需要铺货的销售规模 (系统将根据选择自动计算并剔除受限门店):")
+                    all_types = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
+                    selected_custom_types = st.multiselect(
+                        "销售规模",
+                        all_types,
+                        default=["小店"],
+                        label_visibility="collapsed"
+                    )
+                    if not selected_custom_types:
+                        st.warning("⚠️ 请至少选择一种销售规模")
 
         if st.button("开始计算", type="primary", use_container_width=True):
-            if store_master_df is None and channel != "自定义":
-                st.error("❌ 未找到门店主数据，请检查 data/store_master.xlsx 文件！")
+            # 校验数据源
+            # 注意：如果是自定义-勾选模式，也需要store_master_df
+            needs_master_data = (channel != "自定义") or ("勾选" in custom_sub_mode)
+            
+            if needs_master_data and store_master_df is None:
+                st.error("❌ 未找到门店主数据，无法进行自动计算（请检查 data/store_master.xlsx）！")
+            elif channel == "自定义" and "勾选" in custom_sub_mode and not selected_custom_types:
+                st.error("❌ 请至少勾选一种销售规模！")
             else:
                 row_data = {
-                    "商品品类": category,
-                    "处方类别": selected_xp_category, # 记录一下
+                    "新品大类": category,
+                    "处方类别": selected_xp_category,
                     "SKU数": sku_count,
                     "channel": channel,
                     "预估毛利率(%)": gross_margin,
@@ -166,42 +193,77 @@ def main():
                     "退货条件": return_policy
                 }
                 
-                if channel == "自定义":
+                # 如果是手动输入模式，把手动数据填进去
+                if channel == "自定义" and "手动输入" in custom_sub_mode:
                     for k, v in manual_counts.items():
                         row_data[f"(自定义){k}数"] = v
 
                 try:
+                    store_counts = {}
                     excluded_count = 0
-                    if channel == "自定义":
+                    is_auto_calc_mode = False
+
+                    # 分支逻辑：决定如何获取 store_counts
+                    if channel == "自定义" and "手动输入" in custom_sub_mode:
+                        # 1. 纯手动模式
                         store_counts = extract_manual_counts(row_data)
-                        st.info("💡 自定义通道模式下，不进行'受限批文'的门店剔除，按手动输入数量计算。")
+                        st.info("💡 自定义(手动)模式：不进行'受限批文'门店剔除，按输入数量计算。")
+                        
+                    elif channel == "自定义" and "勾选" in custom_sub_mode:
+                        # 2. 自定义(勾选)模式 -> 走自动计算逻辑
+                        is_auto_calc_mode = True
+                        # 直接把选中的类型列表传给计算函数
+                        store_counts = calc_auto_counts(
+                            store_master_df, 
+                            selected_custom_types, # 传入列表
+                            restricted_xp_code=target_xp_code
+                        )
+                        
+                        # 计算剔除数量
+                        if target_xp_code:
+                            raw_counts = calc_auto_counts(
+                                store_master_df, 
+                                selected_custom_types, 
+                                restricted_xp_code=None
+                            )
+                            excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
+                            
                     else:
-                        # 1. 传入 target_xp_code 进行自动过滤（得到实际参与计算的门店）
+                        # 3. 标准通道模式 (黄/蓝/绿)
+                        is_auto_calc_mode = True
                         store_counts = calc_auto_counts(
                             store_master_df, 
                             channel, 
                             restricted_xp_code=target_xp_code
                         )
-
-                        # 2. 如果设置了限制码，额外计算一次未过滤的总数，以得出剔除的数量
+                        # 计算剔除数量
                         if target_xp_code:
                             raw_counts = calc_auto_counts(
                                 store_master_df, 
                                 channel, 
                                 restricted_xp_code=None
                             )
-                            # 剔除数 = 原始通道总数 - 过滤后通道总数
                             excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
                     
+                    # 执行费用计算
                     result = calculate_fee(row_data, store_counts, config)
 
+                    # --- 展示结果 ---
                     st.markdown("### 通道计算器--输出信息")
+                    
+                    # 动态显示标题
+                    display_channel_name = channel
+                    if channel == "自定义":
+                        if "手动" in custom_sub_mode:
+                            display_channel_name = "自定义(手动)"
+                        else:
+                            display_channel_name = f"自定义(勾选: {len(selected_custom_types)}类)"
 
                     st.markdown(
                         f"""
                         <div style="background-color: #1ABC9C; padding: 15px; border-radius: 8px 8px 0 0; 
                                     color: white; margin-bottom: 0;">
-                            <h4 style="margin:0;">计算结果：{channel}通道</h4>
+                            <h4 style="margin:0;">计算结果：{display_channel_name}</h4>
                         </div>
                         """,
                         unsafe_allow_html=True
@@ -235,15 +297,12 @@ def main():
                             columns=['销售规模', '门店数']
                         )
 
-                        # --- 修复排序逻辑 ---
                         sort_order = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
-                        # 将'销售规模'列转换为有序分类类型，以便正确排序
                         store_details_df['销售规模'] = pd.Categorical(
                             store_details_df['销售规模'], 
                             categories=sort_order, 
                             ordered=True
                         )
-
                         store_details_df = store_details_df.sort_values('销售规模')
 
                         st.dataframe(
@@ -255,11 +314,13 @@ def main():
                         total_stores = sum(result['store_details'].values())
                         
                         # 构建底部统计文案
-                        footer_text = f"计算池中的门店数量: {total_stores:,} (全集团)"
-                        if channel != "自定义" and target_xp_code:
-                            footer_text += f" | 剔除受限门店数: {excluded_count}"
-                        elif channel != "自定义":
-                            footer_text += f" | 无受限门店剔除"
+                        footer_text = f"计算池中的门店数量: {total_stores:,}"
+                        if is_auto_calc_mode and target_xp_code:
+                             footer_text += f" | 剔除受限门店数: {excluded_count}"
+                        elif is_auto_calc_mode:
+                             footer_text += f" | 无受限门店剔除"
+                        else:
+                             footer_text += " (手动输入模式)"
                             
                         st.caption(footer_text)
 
@@ -271,7 +332,7 @@ def main():
                             pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
                             st.markdown(pdf_display, unsafe_allow_html=True)
                         else:
-                            st.info("暂无规则说明文档 (请在 data 目录下放置 rule_description.pdf)")
+                            st.info("暂无规则说明文档")
 
                 except Exception as e:
                     st.error(f"计算出错: {e}")
@@ -281,7 +342,7 @@ def main():
         st.header("📂 批量费用计算")
         st.markdown(
             "<p style='color: gray; font-size: 0.95em; margin-top: -10px; margin-bottom: 20px;'>"
-            "快速为多款新品一次性计算铺货费用，支持黄色/蓝色/绿色/自定义通道混合计算"
+            "快速为多款新品一次性计算铺货费用"
             "</p>",
             unsafe_allow_html=True
         )
@@ -301,48 +362,35 @@ def main():
                 st.warning("未找到模板文件")
 
         st.markdown("---")
-
-        st.markdown("#### 📤 上传批量文件")
-        uploaded_batch = st.file_uploader(
-            "支持Excel 文件（.xlsx 格式）",
-            type=["xlsx"],
-            help="上传后即可一键计算"
-        )
+        uploaded_batch = st.file_uploader("上传批量Excel文件", type=["xlsx"])
 
         if uploaded_batch:
-            st.markdown("#### 🚀 开始计算")
             if st.button("开始批量计算", type="primary", use_container_width=True):
                 if store_master_df is None:
                     st.error("❌ 未找到门店主数据，请检查 data/store_master.xlsx 文件！")
                 else:
                     try:
                         df = read_excel_safe(uploaded_batch)
-
-                        with st.spinner("正在批量计算，请稍等..."):
+                        with st.spinner("正在批量计算..."):
                             results = []
                             logs = []
                             progress_bar = st.progress(0)
-                            status_text = st.empty()
-
+                            
                             for index, row in df.iterrows():
-                                status_text.text(f"处理中：第 {index + 1}/{len(df)} 行 - {row.get('商品名称', '未知商品')}")
-                                
                                 row_dict = row.to_dict()
-
                                 try:
                                     channel_name = row_dict.get('铺货通道')
-                                    
-                                    # --- 批量计算也尝试获取处方类别限制 ---
-                                    # 假设模板里有 "处方类别" 列
                                     batch_xp_cat = row_dict.get('处方类别')
-                                    batch_target_code = None
-                                    if batch_xp_cat and xp_map:
-                                        batch_target_code = xp_map.get(str(batch_xp_cat).strip())
-                                    # ----------------------------------
+                                    batch_target_code = xp_map.get(str(batch_xp_cat).strip()) if (batch_xp_cat and xp_map) else None
 
+                                    # 批量计算这里主要支持标准通道和旧的自定义模式
+                                    # 如果在Excel里填了 "自定义"，则走手动提取
+                                    # 如果想在Excel里支持"小店,成长店"这种筛选，calc_auto_counts已经支持了解析逗号分隔符
+                                    
                                     if channel_name == "自定义":
                                         store_counts = extract_manual_counts(row_dict)
                                     else:
+                                        # 这里 channel_name 可以是 "黄色" 也可以是 "小店,成长店"
                                         store_counts = calc_auto_counts(
                                             store_master_df, 
                                             channel_name,
@@ -350,83 +398,37 @@ def main():
                                         )
                                     
                                     result = calculate_fee(row_dict, store_counts, config)
-
+                                    
                                     row_dict['理论总新品铺货费 (元)'] = int(result['theoretical_fee'])
                                     row_dict['折扣'] = result['discount_factor']
                                     row_dict['折后总新品铺货费 (元)'] = int(result['final_fee'])
-                                    
-                                    # 记录是否触发了限制
                                     if batch_target_code:
                                         row_dict['备注'] = f"已按类别[{batch_xp_cat}]剔除受限门店"
 
-                                    store_desc = []
-                                    for store_type, count in result['store_details'].items():
-                                        if count > 0:
-                                            store_desc.append(f"{store_type}: {count}")
-                                    row_dict['铺货门店数量'] = ", ".join(store_desc) if store_desc else "无铺货门店"
-
+                                    results.append(row_dict)
                                 except Exception as e:
-                                    row_dict['理论总新品铺货费 (元)'] = None
-                                    row_dict['折扣'] = None
-                                    row_dict['折后总新品铺货费 (元)'] = None
-                                    row_dict['铺货门店数量'] = f"错误: {str(e)}"
-                                    logs.append(f"第 {index+1} 行 ({row.get('商品名称','未知')}): {e}")
+                                    row_dict['备注'] = f"Error: {e}"
+                                    results.append(row_dict)
                                 
-                                results.append(row_dict)
                                 progress_bar.progress((index + 1) / len(df))
-
+                            
                             result_df = pd.DataFrame(results)
-                            status_text.success("🎉 批量计算完成！")
-
-                        st.markdown(
-                            """
-                            #### 📊 计算结果 <span style="color: gray; font-size: 0.9em;">（仅预览前5条）</span>
-                            """,
-                            unsafe_allow_html=True
-                        )
-
-                        cols_order = ['商品名称', '商品品类', '处方类别', 'SKU数', '铺货通道', '理论总新品铺货费 (元)', '折扣', '折后总新品铺货费 (元)', '铺货门店数量', '备注']
-                        # 确保存在的列才显示
-                        cols_order = [c for c in cols_order if c in result_df.columns]
-                        remaining_cols = [col for col in result_df.columns if col not in cols_order]
-                        display_cols = cols_order + remaining_cols
-                        display_cols = [col for col in display_cols if col.lower() != 'channel']
-
-                        preview_df = result_df[display_cols].head(5)
-                        st.dataframe(
-                            preview_df,
-                            use_container_width=True,
-                            hide_index=False
-                        )
-
-                        if len(result_df) > 5:
-                            st.info(f"💡 共计算 **{len(result_df)}** 款新品，仅显示前5条预览。完整结果请点击下方导出按钮获取。")
-
-                        valid_fees = result_df['折后总新品铺货费 (元)'].dropna()
-                        if not valid_fees.empty:
-                            total_fee = int(valid_fees.sum())
-                            st.success(f"🎯 本次批量计算 **{len(valid_fees)}** 款新品，总新品铺货费：**{total_fee:,} 元**")
-
-                        output = BytesIO()
-                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                            result_df.to_excel(writer, index=False, sheet_name='计算结果')
-                        
-                        st.download_button(
-                            "📤 导出完整结果",
-                            output.getvalue(),
-                            file_name=f"新品铺货费_批量结果_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
-
-                        if logs:
-                            with st.expander("⚠️ 查看错误日志"):
-                                st.write(logs)
+                            st.success("批量计算完成！")
+                            st.dataframe(result_df.head())
+                            
+                            output = BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                result_df.to_excel(writer, index=False)
+                            
+                            st.download_button(
+                                "导出结果", 
+                                output.getvalue(), 
+                                file_name="批量计算结果.xlsx", 
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
 
                     except Exception as e:
-                        st.error(f"处理文件失败：{e}")
-        else:
-            st.info("👆 请上传批量新品文件，上传后即可一键计算全部新品费用。")
+                        st.error(f"处理文件失败: {e}")
 
 if __name__ == "__main__":
     main()
