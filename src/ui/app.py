@@ -42,7 +42,21 @@ except Exception as e:
     st.stop()
 
 def main():
-    st.title("💰 新品铺货费计算器")
+    # --- Custom CSS to adjust top padding and remove header ---
+    st.markdown("""
+        <style>
+        /* Hide Streamlit Header (Deploy button & Hamburger menu) */
+        header[data-testid="stHeader"] {
+            display: none;
+        }
+        /* Adjust main content top padding */
+        .block-container {
+            padding-top: 1.5rem !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<h1 style='text-align: center;'>新品铺货费计算器</h1>", unsafe_allow_html=True)
 
     # --- Data Loading (Auto) ---
     store_master_path = os.path.join(project_root, "data", "store_master.xlsx")
@@ -75,7 +89,7 @@ def main():
     # --- Tab 1: 单品计算器 ---
     with tab1:
         with st.container(border=True):
-            st.markdown("#### 📝 通道计算器 -- 输入信息")
+            st.markdown("<div style='font-size: 18px; font-weight: bold; margin-bottom: 10px;'>📝 通道计算器 -- 输入信息</div>", unsafe_allow_html=True)
             
             c1, c2 = st.columns(2)
             with c1:
@@ -293,44 +307,32 @@ def main():
 
                         st.divider() # 分割线
 
-                        # 2. 综合计算明细表 (Integrated Process Table)
-                        st.markdown("**📊 计算过程明细 (门店分布 & 系数)**")
+                        # 2. 详细数据展示 (Split Tables)
                         
-                        process_data = []
-
-                        # A. 门店分布 (Base Data)
-                        store_order = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
-                        for stype in store_order:
-                            if stype in result['store_details']:
-                                count = result['store_details'][stype]
-                                process_data.append({
-                                    "指标类型": "🏬 门店分布",
-                                    "指标名称": stype,
-                                    "数值/详情": f"{count}"
-                                })
-                        
-                        # B. 系数调整 (Coefficients)
+                        # A. 计算系数表 (Wide Format)
+                        st.markdown("📉 计算系数")
                         coeffs = result.get('coefficients', [])
-                        for name, val in coeffs:
-                            process_data.append({
-                                "指标类型": "📉 系数调整",
-                                "指标名称": name,
-                                "数值/详情": f"{val}"
-                            })
-
-                        # 创建并展示 DataFrame
-                        if process_data:
-                            df_process = pd.DataFrame(process_data)
+                        if coeffs:
+                            # 转为字典: {系数名: 数值}
+                            coeff_dict = {name: val for name, val in coeffs}
+                            df_coeffs = pd.DataFrame([coeff_dict])
                             st.dataframe(
-                                df_process,
+                                df_coeffs,
                                 use_container_width=True,
-                                hide_index=True,
-                                column_config={
-                                    "指标类型": st.column_config.TextColumn("类型", width="small"),
-                                    "指标名称": st.column_config.TextColumn("项目名称", width="medium"),
-                                    "数值/详情": st.column_config.TextColumn("数值", width="medium"),
-                                }
+                                hide_index=True
                             )
+
+                        # B. 门店分布表 (Wide Format)
+                        st.markdown("🏬 门店分布")
+                        store_order = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
+                        # 确保所有类型都有列，没有的填0
+                        store_dict = {stype: result['store_details'].get(stype, 0) for stype in store_order}
+                        df_stores = pd.DataFrame([store_dict])
+                        st.dataframe(
+                            df_stores,
+                            use_container_width=True,
+                            hide_index=True
+                        )
 
                         total_stores = sum(result['store_details'].values())
                         
