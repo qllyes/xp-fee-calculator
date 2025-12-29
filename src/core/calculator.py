@@ -21,8 +21,8 @@ def calculate_fee(row_data, store_counts, config):
     Returns:
         dict: detailed calculation result containing 'final_fee', 'theoretical_fee', etc.
     """
-    category = row_data.get("商品品类")
-    sku_count = row_data.get("SKU数", 0)
+    category = row_data.get("新品大类")
+    sku_count = row_data.get("同一供应商单次引进SKU数", 0)
     
     # 1. Base Fee Calculation
     base_fees_config = config.get("base_fees", {}).get(category, {})
