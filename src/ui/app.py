@@ -43,20 +43,35 @@ except Exception as e:
 
 def main():
     # --- Custom CSS to adjust top padding and remove header ---
+    # --- 紧凑型计算器专用样式 ---
     st.markdown("""
         <style>
-        /* Hide Streamlit Header (Deploy button & Hamburger menu) */
-        header[data-testid="stHeader"] {
-            display: none;
-        }
-        /* Adjust main content top padding */
+        /* 1. 限制最大宽度：像一个真正的计算器窗口一样居中显示 */
         .block-container {
-            padding-top: 1.5rem !important;
+            max-width: 1000px;       /* 核心：限制宽度 */
+            padding-top: 2rem !important;
+            padding-bottom: 2rem !important;
+            margin: auto;           /* 居中 */
         }
+        
+        /* 2. 压缩垂直间距：让输入框排列更紧密，减少滚动 */
+        div[data-testid="stVerticalBlock"] > div {
+            gap: 0.5rem !important; /* 默认是 1rem，这里减半 */
+        }
+        
+        /* 3. 压缩输入框本身的高度和边距 */
+        .stNumberInput, .stSelectbox, .stTextInput {
+            margin-bottom: -5px !important; /* 进一步拉近上下距离 */
+        }
+        
+        /* 4. 隐藏无关元素 */
+        header[data-testid="stHeader"] { display: none; }
+        footer { display: none; }
+        
         </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1 style='text-align: center;'>新品铺货费计算器</h1>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>新品铺货费计算器</h2>", unsafe_allow_html=True)
 
     # --- Data Loading (Auto) ---
     store_master_path = os.path.join(project_root, "data", "store_master.xlsx")
@@ -189,11 +204,11 @@ def main():
         if st.button("开始计算", type="primary", use_container_width=True):
             # 校验数据源
             # 注意：如果是自定义-勾选模式，也需要store_master_df
-            needs_master_data = (channel != "自定义") or ("勾选" in custom_sub_mode)
+            needs_master_data = (channel != "自定义") or ("自定义销售规模" in custom_sub_mode)
             
             if needs_master_data and store_master_df is None:
                 st.error("❌ 未找到门店主数据，无法进行自动计算（请检查 data/store_master.xlsx）！")
-            elif channel == "自定义" and "勾选" in custom_sub_mode and not selected_custom_types:
+            elif channel == "自定义" and "自定义销售规模" in custom_sub_mode and not selected_custom_types:
                 st.error("❌ 请至少勾选一种销售规模！")
             else:
                 row_data = {
@@ -224,7 +239,7 @@ def main():
                         store_counts = extract_manual_counts(row_data)
                         st.info("💡 自定义(手动)模式：不进行'受限批文'门店剔除，按输入数量计算。")
                         
-                    elif channel == "自定义" and "勾选" in custom_sub_mode:
+                    elif channel == "自定义" and "自定义销售规模" in custom_sub_mode:
                         # 2. 自定义(勾选)模式 -> 走自动计算逻辑
                         is_auto_calc_mode = True
                         # 直接把选中的类型列表传给计算函数
@@ -264,27 +279,10 @@ def main():
                     result = calculate_fee(row_data, store_counts, config)
 
                     # --- 展示结果 ---
-                    st.markdown("### 通道计算器--输出信息")
                     
-                    # 动态显示标题
-                    display_channel_name = channel
-                    if channel == "自定义":
-                        if "手动" in custom_sub_mode:
-                            display_channel_name = "自定义(手动)"
-                        else:
-                            display_channel_name = f"自定义(勾选: {len(selected_custom_types)}类)"
-
-                    st.markdown(
-                        f"""
-                        <div style="background-color: #1ABC9C; padding: 15px; border-radius: 8px 8px 0 0; 
-                                    color: white; margin-bottom: 0;">
-                            <h4 style="margin:0;">计算结果：{display_channel_name}</h4>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-
                     with st.container(border=True):
+                        st.markdown("<div style='font-size: 18px; font-weight: bold; margin-bottom: 10px;'>📝 通道计算器 -- 输出信息</div>", unsafe_allow_html=True)
+                        
                         # 1. 费用概览区域 (Top Level Stats)
                         col_res1, col_res2, col_res3 = st.columns([1, 1, 1.5])
                         with col_res1:
