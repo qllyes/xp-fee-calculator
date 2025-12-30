@@ -114,7 +114,6 @@ def main():
             margin-top: -1.5rem !important;   /* 核心：负边距把 Tab 往上拉 */
         }
         
-
         </style>
     """, unsafe_allow_html=True)
 
@@ -136,14 +135,27 @@ def main():
     xp_mapping_path = os.path.join(project_root, "data", "处方类别与批文分类表.xlsx")
     xp_map = get_xp_mapping(xp_mapping_path)
 
+    # 显示隐藏式更新时间
+    # 利用负 margin-bottom 让下方的 Tab 栏向上提，使文字显示在 Tab 栏右侧
     st.markdown(
-        f"<p style='color: #BDC3C7; font-size: 0.8em; text-align: right; margin-top: -20px;'>"
-        f"门店表更新于: {update_time}</p>",
+        f"""
+        <div style="
+            text-align: right;
+            margin-bottom: -28px; 
+            position: relative;
+            z-index: 999;
+            padding-right: 5px;
+            top: 2px;
+            pointer-events: none;
+        ">
+            <span style="color: #BDC3C7; font-size: 0.8em;">门店表更新于: {update_time}</span>
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
     # --- Tabs ---
-    tab1, tab2 = st.tabs(["📝 单品计算器", "📂 批量计算器"])
+    tab1, tab2 = st.tabs(["🏷️ 单品计算器", "📂 批量计算器"])
 
     # --- Tab 1: 单品计算器 (居中布局) ---
     with tab1:
@@ -372,23 +384,9 @@ def main():
                     except Exception as e:
                         st.error(f"计算出错: {e}")
 
-    # --- Tab 2: 批量计算器 (状态保持优化版) ---
+    # --- Tab 2: 批量计算器 ---
     with tab2:
-        # [优化] 使用 markdown 替代 header，实现更精致的小字号 (与 Tab 1 标题保持一致)
-        st.markdown(
-            "<div style='font-size: 18px; font-weight: bold; margin-bottom: 5px; color: #333;'>"
-            "📂 批量费用计算"
-            "</div>", 
-            unsafe_allow_html=True
-        )
-        
-        # 下面的说明文字 (微调 margin-top 以适配新的标题高度)
-        st.markdown(
-            "<p style='color: gray; font-size: 0.95em; margin-top: 0px; margin-bottom: 20px;'>"
-            "快速为多款新品一次性计算铺货费用"
-            "</p>",
-            unsafe_allow_html=True
-        )
+        st.markdown("<p style='color: gray; font-size: 0.95em; margin-top: -10px; margin-bottom: 20px;'>快速为多款新品一次性计算铺货费用</p>", unsafe_allow_html=True)
 
         with st.expander("📥 需要导入模板？点这里下载（可选）", expanded=False):
             template_path = os.path.join(project_root, "data", "batch_template.xlsx")
@@ -399,26 +397,9 @@ def main():
                 st.warning("未找到模板文件")
 
         st.markdown("---")
-        
-        # [优化] 上传控件
         uploaded_batch = st.file_uploader("上传批量Excel文件", type=["xlsx"])
 
-        # [优化] 检查文件是否更换，如果更换则清除 Session 中的旧结果
-        # 我们使用 uploaded_batch 对象的 ID 或文件名来判断
-        current_file_id = uploaded_batch.file_id if uploaded_batch else None
-        
-        if "batch_last_file_id" not in st.session_state:
-            st.session_state.batch_last_file_id = None
-        if "batch_results_df" not in st.session_state:
-            st.session_state.batch_results_df = None
-            
-        # 如果文件ID变了，清除之前的结果
-        if current_file_id != st.session_state.batch_last_file_id:
-            st.session_state.batch_results_df = None
-            st.session_state.batch_last_file_id = current_file_id
-
         if uploaded_batch:
-            # 只有点击按钮时才执行计算，并更新 Session State
             if st.button("开始批量计算", type="primary", use_container_width=True):
                 if store_master_df is None:
                     st.error("❌ 未找到门店主数据，请检查 data/store_master.xlsx 文件！")
@@ -441,7 +422,9 @@ def main():
                                     if channel_name == "自定义":
                                         store_counts = extract_manual_counts(row_dict)
                                     else:
+                                        # 计算过滤后的门店数
                                         store_counts = calc_auto_counts(store_master_df, channel_name, restricted_xp_code=batch_target_code)
+                                        # 如果有处方限制，计算剔除数量
                                         if batch_target_code:
                                             raw_counts = calc_auto_counts(store_master_df, channel_name, restricted_xp_code=None)
                                             excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
@@ -453,13 +436,19 @@ def main():
                                     row_dict['折扣'] = result['discount_factor']
                                     row_dict['折后总新品铺货费 (元)'] = int(result['final_fee'])
                                     
-                                    # 3. 详情拆分
+                                    # -------------------------------------------------------------
+                                    # [新增逻辑] 拆分列显示详情 & 简化备注
+                                    # -------------------------------------------------------------
+                                    
+                                    # 列1: [详情]门店分布 (过滤为0的项)
                                     active_stores = {k: v for k, v in result['store_details'].items() if v > 0}
                                     row_dict['[详情]门店分布'] = str(active_stores)
                                     
+                                    # 列2: [详情]计算系数
                                     coeffs_dict = {item[0]: item[1] for item in result['coefficients']}
                                     row_dict['[详情]计算系数'] = str(coeffs_dict)
                                     
+                                    # 列3: 备注 (仅显示剔除信息)
                                     if batch_target_code and excluded_count > 0:
                                         row_dict['备注'] = f"已剔除受限门店数：{excluded_count}"
                                     elif batch_target_code:
@@ -476,28 +465,21 @@ def main():
                             
                             result_df = pd.DataFrame(results)
                             st.success("批量计算完成！")
+                            st.dataframe(result_df.head())
                             
-                            # [优化] 将结果保存到 Session State，防止刷新后消失
-                            st.session_state.batch_results_df = result_df
+                            output = BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                result_df.to_excel(writer, index=False)
+                            
+                            st.download_button(
+                                "导出结果", 
+                                output.getvalue(), 
+                                file_name="批量计算结果.xlsx", 
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
 
                     except Exception as e:
                         st.error(f"处理文件失败: {e}")
-            
-            # [优化] 渲染结果逻辑移出 Button 块
-            # 只要 Session State 里有结果，就一直显示
-            if st.session_state.batch_results_df is not None:
-                st.dataframe(st.session_state.batch_results_df.head())
-                
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    st.session_state.batch_results_df.to_excel(writer, index=False)
-                
-                st.download_button(
-                    "导出结果", 
-                    output.getvalue(), 
-                    file_name="批量计算结果.xlsx", 
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
 
 if __name__ == "__main__":
     main()
