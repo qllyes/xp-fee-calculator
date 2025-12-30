@@ -61,11 +61,11 @@ def calc_auto_counts(store_master_df, channel, restricted_xp_code=None):
         valid_types = channel
     elif isinstance(channel, str):
         # 情况B: 传入了预定义颜色通道或逗号分隔字符串
-        if channel == "黄色":
+        if channel == "中店以上":
             valid_types = ["超级旗舰店", "旗舰店", "大店"]
-        elif channel == "蓝色":
+        elif channel == "成长店以上":
             valid_types = ["超级旗舰店", "旗舰店", "大店", "中店", "小店"]
-        elif channel == "绿色":
+        elif channel == "全量门店":
             valid_types = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
         else:
             # 尝试解析 "小店,成长店" 这种格式 (为批量导入预留灵活性)

@@ -200,7 +200,7 @@ def main():
                 st.markdown("**通道选择**")
                 channel_mode = st.radio(
                     "通道模式",
-                    ["标准通道 (按黄/蓝/绿通道选择门店)", "自定义通道 (按标签选择门店)"],
+                    ["标准通道", "自定义通道"],
                     label_visibility="collapsed"
                 )
                 
@@ -212,10 +212,11 @@ def main():
                 if "标准通道" in channel_mode:
                     color_selection = st.radio(
                         "选择颜色",
-                        ["🟡 黄色", "🔵 蓝色", "🟢 绿色"],
+                        ["🟡 中店以上", "🔵 成长店以上", "🟢 全量门店"],
                         label_visibility="collapsed"
                     )
-                    channel = color_selection.split(" ")[1]
+                    #将前端选择的颜色转换为后端需要的通道名称
+                    channel = color_selection.split()[-1] 
                 else:
                     channel = "自定义"
                     custom_sub_mode = st.radio(
@@ -474,7 +475,7 @@ def main():
                             st.download_button(
                                 "导出结果", 
                                 output.getvalue(), 
-                                file_name="批量计算结果.xlsx", 
+                                file_name="新品费批量计算结果.xlsx", 
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
 
