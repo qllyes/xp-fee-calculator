@@ -136,7 +136,6 @@ def main():
     xp_map = get_xp_mapping(xp_mapping_path)
 
     # 显示隐藏式更新时间
-    # 利用负 margin-bottom 让下方的 Tab 栏向上提，使文字显示在 Tab 栏右侧
     st.markdown(
         f"""
         <div style="
@@ -215,7 +214,6 @@ def main():
                         ["🟡 中店以上", "🔵 成长店以上", "🟢 全量门店"],
                         label_visibility="collapsed"
                     )
-                    #将前端选择的颜色转换为后端需要的通道名称
                     channel = color_selection.split()[-1] 
                 else:
                     channel = "自定义"
@@ -290,12 +288,6 @@ def main():
                         with st.container(border=True):
                             st.markdown("<div style='font-size: 18px; font-weight: bold; margin-bottom: 10px;'>🧾 通道计算器 -- 输出信息</div>", unsafe_allow_html=True)
                             
-                            # st.markdown("#####") # 增加一点顶部间距
-                            
-                            # 定义统一的 CSS 样式模板
-                            # metric-box: 容器，负责居中
-                            # metric-label: 标签，灰色小字
-                            # metric-value: 数值，大字
                             css_style = """
                             <style>
                                 .metric-box {
@@ -319,7 +311,7 @@ def main():
                             """
                             st.markdown(css_style, unsafe_allow_html=True)
 
-                            col_res1, col_res2, col_res3 = st.columns([1, 1, 1.2]) # 调整比例
+                            col_res1, col_res2, col_res3 = st.columns([1, 1, 1.2]) 
                             
                             with col_res1:
                                 st.markdown(f"""
@@ -393,14 +385,27 @@ def main():
             template_path = os.path.join(project_root, "data", "batch_template.xlsx")
             if os.path.exists(template_path):
                 with open(template_path, "rb") as f:
-                    st.download_button("下载导入模板", f, file_name="新品铺货费_批量导入模板.xlsx", use_container_width=True, type="primary")
+                    st.download_button("下载导入模板", f, file_name="新品铺货费_批量导入模板.xlsx", use_container_width=True, type="secondary")
             else:
                 st.warning("未找到模板文件")
 
         st.markdown("---")
         uploaded_batch = st.file_uploader("上传批量Excel文件", type=["xlsx"])
 
+        # [修复逻辑 1] 初始化 Session State
+        if "batch_last_file_id" not in st.session_state:
+            st.session_state.batch_last_file_id = None
+        if "batch_results_df" not in st.session_state:
+            st.session_state.batch_results_df = None
+
         if uploaded_batch:
+            # [修复逻辑 2] 检测文件是否变化，如果变化则清空之前的结果
+            current_file_id = uploaded_batch.file_id
+            if current_file_id != st.session_state.batch_last_file_id:
+                st.session_state.batch_results_df = None
+                st.session_state.batch_last_file_id = current_file_id
+
+            # [修复逻辑 3] 点击按钮只负责计算和保存结果到 Session，不负责显示
             if st.button("开始批量计算", type="primary", use_container_width=True):
                 if store_master_df is None:
                     st.error("❌ 未找到门店主数据，请检查 data/store_master.xlsx 文件！")
@@ -437,19 +442,13 @@ def main():
                                     row_dict['折扣'] = result['discount_factor']
                                     row_dict['折后总新品铺货费 (元)'] = int(result['final_fee'])
                                     
-                                    # -------------------------------------------------------------
-                                    # [新增逻辑] 拆分列显示详情 & 简化备注
-                                    # -------------------------------------------------------------
-                                    
-                                    # 列1: [详情]门店分布 (过滤为0的项)
+                                    # 详情拆分
                                     active_stores = {k: v for k, v in result['store_details'].items() if v > 0}
                                     row_dict['[详情]门店分布'] = str(active_stores)
                                     
-                                    # 列2: [详情]计算系数
                                     coeffs_dict = {item[0]: item[1] for item in result['coefficients']}
                                     row_dict['[详情]计算系数'] = str(coeffs_dict)
                                     
-                                    # 列3: 备注 (仅显示剔除信息)
                                     if batch_target_code and excluded_count > 0:
                                         row_dict['备注'] = f"已剔除受限门店数：{excluded_count}"
                                     elif batch_target_code:
@@ -466,21 +465,27 @@ def main():
                             
                             result_df = pd.DataFrame(results)
                             st.success("批量计算完成！")
-                            st.dataframe(result_df.head())
                             
-                            output = BytesIO()
-                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                                result_df.to_excel(writer, index=False)
-                            
-                            st.download_button(
-                                "导出结果", 
-                                output.getvalue(), 
-                                file_name="新品费批量计算结果.xlsx", 
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
+                            # [关键步骤] 将结果存入 Session State，而不是直接显示
+                            st.session_state.batch_results_df = result_df
 
                     except Exception as e:
                         st.error(f"处理文件失败: {e}")
+            
+            # [修复逻辑 4] 只要 Session State 中有结果，就显示（独立于按钮点击事件）
+            if st.session_state.batch_results_df is not None:
+                st.dataframe(st.session_state.batch_results_df.head())
+                
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    st.session_state.batch_results_df.to_excel(writer, index=False)
+                
+                st.download_button(
+                    "导出结果", 
+                    output.getvalue(), 
+                    file_name="新品费批量计算结果.xlsx", 
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
 
 if __name__ == "__main__":
     main()
