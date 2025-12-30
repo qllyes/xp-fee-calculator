@@ -113,6 +113,19 @@ def main():
         .stTabs {
             margin-top: -1.5rem !important;   /* 核心：负边距把 Tab 往上拉 */
         }
+
+        /* 9. 自定义 secondary 按钮（下载模板按钮）的背景色 */
+        button[kind="secondary"] {
+            background-color: #F0F2F6 !important; /* 浅灰色背景 */
+            border: 1px solid #D1D5DB !important; /* 稍微深一点的边框 */
+            color: #31333F !important;
+        }
+        
+        /* 悬停效果 */
+        button[kind="secondary"]:hover {
+            background-color: #E6E9EF !important;
+            border-color: #B0B5BE !important;
+        }
         
         </style>
     """, unsafe_allow_html=True)
