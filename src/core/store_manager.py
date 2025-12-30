@@ -33,9 +33,9 @@ def load_xp_mapping(path="data/处方类别与批文分类表.xlsx"):
         print(f"Error loading xp mapping: {e}")
         return {}
 
-def calc_auto_counts(store_master_df, channel, restricted_xp_code=None):
+def calc_auto_counts(store_master_df, channel, restricted_xp_code=None, war_zone=None):
     """
-    Calculates store counts based on the selected channel and prescription restrictions.
+    Calculates store counts based on the selected channel, prescription restrictions, and war zone.
     
     Args:
         store_master_df: DataFrame of the store master data.
@@ -45,6 +45,8 @@ def calc_auto_counts(store_master_df, channel, restricted_xp_code=None):
             - List: A list of store types e.g. ["小店", "成长店"].
         restricted_xp_code: (Optional) The xp_code string to check against store restrictions.
                             e.g., "5". If a store has "5" in its restricted list, it will be excluded.
+        war_zone: (Optional) The war zone name to filter by. e.g. "华东战区". 
+                  If None or "全集团", no filtering is applied.
     
     Returns:
         dict: A dictionary of {store_type: count}.
@@ -62,7 +64,7 @@ def calc_auto_counts(store_master_df, channel, restricted_xp_code=None):
     elif isinstance(channel, str):
         # 情况B: 传入了预定义颜色通道或逗号分隔字符串
         if channel == "中店以上":
-            valid_types = ["超级旗舰店", "旗舰店", "大店"]
+            valid_types = ["超级旗舰店", "旗舰店", "大店", "中店"]
         elif channel == "成长店以上":
             valid_types = ["超级旗舰店", "旗舰店", "大店", "中店", "小店"]
         elif channel == "全量门店":
@@ -77,8 +79,19 @@ def calc_auto_counts(store_master_df, channel, restricted_xp_code=None):
     if not valid_types:
         return {}
 
-    # --- 2. 受限门店过滤逻辑 (Restricted Store Filtering) ---
+    # --- 2. 筛选逻辑开始 ---
     current_df = store_master_df
+
+    # [新增] 战区过滤逻辑
+    # 如果传入了战区且不是"全集团"，则进行筛选
+    if war_zone and war_zone != "全集团":
+        if "提报战区" in current_df.columns:
+            current_df = current_df[current_df["提报战区"] == war_zone]
+        else:
+            # 如果没有提报战区字段，暂时忽略过滤
+            pass
+
+    # --- 3. 受限门店过滤逻辑 (Restricted Store Filtering) ---
     
     if restricted_xp_code is not None and "受限批文分类编码" in current_df.columns:
         target_code = str(restricted_xp_code).strip()
@@ -110,7 +123,7 @@ def calc_auto_counts(store_master_df, channel, restricted_xp_code=None):
             # 保留 不需要剔除 (~exclude_mask) 的行
             current_df = current_df[~exclude_mask].copy()
 
-    # --- 3. 统计指定类型的门店数量 ---
+    # --- 4. 统计指定类型的门店数量 ---
     # 筛选出属于 valid_types 的门店
     filtered_df = current_df[current_df["销售规模"].isin(valid_types)]
     counts = filtered_df["销售规模"].value_counts().to_dict()

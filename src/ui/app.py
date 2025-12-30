@@ -248,6 +248,22 @@ def main():
                         if not selected_custom_types:
                             st.warning("⚠️ 请至少选择一种销售规模")
 
+                # [新增] 提报战区选择
+                st.markdown("""
+                            <div style="
+                                font-size: 16px; 
+                                font-weight: 400; 
+                                margin-bottom: 5px; 
+                                margin-top: 10px;
+                                color: #31333F;
+                            ">
+                                战区选择(如果选中一个战区，只会计算该战区中的门店)
+                            </div>
+                        """, unsafe_allow_html=True)
+                
+                war_zone_options = config.get("war_zones", ["全集团"])
+                selected_war_zone = st.selectbox("选择战区", war_zone_options, label_visibility="collapsed")
+
             if st.button("开始计算", type="primary", use_container_width=True):
                 needs_master_data = (channel != "自定义") or ("自定义销售规模" in custom_sub_mode)
                 
@@ -281,15 +297,35 @@ def main():
                             st.info("💡 自定义(手动)模式：不进行'受限批文'门店剔除，按输入数量计算。")
                         elif channel == "自定义" and "自定义销售规模" in custom_sub_mode:
                             is_auto_calc_mode = True
-                            store_counts = calc_auto_counts(store_master_df, selected_custom_types, restricted_xp_code=target_xp_code)
+                            store_counts = calc_auto_counts(
+                                store_master_df, 
+                                selected_custom_types, 
+                                restricted_xp_code=target_xp_code,
+                                war_zone=selected_war_zone
+                            )
                             if target_xp_code:
-                                raw_counts = calc_auto_counts(store_master_df, selected_custom_types, restricted_xp_code=None)
+                                raw_counts = calc_auto_counts(
+                                    store_master_df, 
+                                    selected_custom_types, 
+                                    restricted_xp_code=None,
+                                    war_zone=selected_war_zone
+                                )
                                 excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
                         else:
                             is_auto_calc_mode = True
-                            store_counts = calc_auto_counts(store_master_df, channel, restricted_xp_code=target_xp_code)
+                            store_counts = calc_auto_counts(
+                                store_master_df, 
+                                channel, 
+                                restricted_xp_code=target_xp_code,
+                                war_zone=selected_war_zone
+                            )
                             if target_xp_code:
-                                raw_counts = calc_auto_counts(store_master_df, channel, restricted_xp_code=None)
+                                raw_counts = calc_auto_counts(
+                                    store_master_df, 
+                                    channel, 
+                                    restricted_xp_code=None,
+                                    war_zone=selected_war_zone
+                                )
                                 excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
                         
                         result = calculate_fee(row_data, store_counts, config)
@@ -431,6 +467,14 @@ def main():
                                     channel_name = row_dict.get('铺货通道')
                                     batch_xp_cat = row_dict.get('处方类别')
                                     batch_target_code = xp_map.get(str(batch_xp_cat).strip()) if (batch_xp_cat and xp_map) else None
+                                    
+                                    # [新增] 批量计算读取战区
+                                    batch_war_zone = row_dict.get('提报战区')
+                                    if pd.isna(batch_war_zone) or str(batch_war_zone).strip() == "" or str(batch_war_zone).strip() == "全集团":
+                                        batch_war_zone = "全集团"
+                                    else:
+                                        batch_war_zone = str(batch_war_zone).strip()
+
                                     excluded_count = 0
 
                                     # 1. 计算 Store Counts
@@ -438,10 +482,20 @@ def main():
                                         store_counts = extract_manual_counts(row_dict)
                                     else:
                                         # 计算过滤后的门店数
-                                        store_counts = calc_auto_counts(store_master_df, channel_name, restricted_xp_code=batch_target_code)
+                                        store_counts = calc_auto_counts(
+                                            store_master_df, 
+                                            channel_name, 
+                                            restricted_xp_code=batch_target_code,
+                                            war_zone=batch_war_zone
+                                        )
                                         # 如果有处方限制，计算剔除数量
                                         if batch_target_code:
-                                            raw_counts = calc_auto_counts(store_master_df, channel_name, restricted_xp_code=None)
+                                            raw_counts = calc_auto_counts(
+                                                store_master_df, 
+                                                channel_name, 
+                                                restricted_xp_code=None,
+                                                war_zone=batch_war_zone
+                                            )
                                             excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
                                     
                                     # 2. 费用计算
