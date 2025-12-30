@@ -194,9 +194,18 @@ def main():
                     selected_xp_category = st.selectbox("处方类别 (筛选受限门店)", xp_options)
 
                 target_xp_code = xp_map.get(selected_xp_category) if xp_map else None
-                st.markdown("---")
+                #st.markdown("---")
                 
-                st.markdown("**通道选择**")
+                st.markdown("""
+                            <div style="
+                                font-size: 16px; 
+                                font-weight: 600; 
+                                margin-bottom: 0px; 
+                                color: #31333F;
+                            ">
+                                通道选择
+                            </div>
+                        """, unsafe_allow_html=True)
                 channel_mode = st.radio(
                     "通道模式",
                     ["标准通道", "自定义通道"],
@@ -355,7 +364,7 @@ def main():
                                 with col_detail_2:
                                     st.markdown("🏬 门店分布")
                                     store_order = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
-                                    store_data = {"门店类型": store_order, "数量": [result['store_details'].get(t, 0) for t in store_order]}
+                                    store_data = {"销售规模": store_order, "门店数": [result['store_details'].get(t, 0) for t in store_order]}
                                     st.dataframe(pd.DataFrame(store_data), use_container_width=True, hide_index=True)
 
                                 total_stores = sum(result['store_details'].values())
