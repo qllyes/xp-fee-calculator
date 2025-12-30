@@ -381,7 +381,7 @@ def main():
     with tab2:
         st.markdown("<p style='color: gray; font-size: 0.95em; margin-top: -10px; margin-bottom: 20px;'>快速为多款新品一次性计算铺货费用</p>", unsafe_allow_html=True)
 
-        with st.expander("📥 需要导入模板？点这里下载（可选）", expanded=False):
+        with st.expander("📥 需要导入模板？点这里下载", expanded=True):
             template_path = os.path.join(project_root, "data", "batch_template.xlsx")
             if os.path.exists(template_path):
                 with open(template_path, "rb") as f:
