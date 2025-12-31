@@ -177,9 +177,18 @@ def main():
             with st.container(border=True):
                 st.markdown("<div style='font-size: 18px; font-weight: bold; margin-bottom: 10px;'>📝 通道计算器 -- 输入信息</div>", unsafe_allow_html=True)
                 
+                # [新增功能] 采购类型选择，独占一行，放在最前面
+                # 对应需求：前端新增的【统采or地采】放在【新品大类】前面，独自占一行
+                procurement_type = st.selectbox(
+                    "统采or地采", 
+                    ["统采", "地采"],
+                    index=0, # 默认统采
+                    # help="选择统采或地采将影响最低保底费用的取值"
+                )
+
                 c1, c2 = st.columns(2)
                 with c1:
-                    category = st.selectbox("新品大类", list(config["base_fees"].keys()))
+                    category = st.selectbox("新品大类", list(config["base_fees"].keys()))       
                 with c2:
                     supplier_type = st.selectbox("供应商类型", list(config["supplier_type_coeffs"].keys()))
 
@@ -193,8 +202,7 @@ def main():
                 with c5:
                     cost_price = st.number_input("进价 (元)", min_value=0.0, value=10.0)
                 with c6:
-                    gross_margin = st.number_input("预估成交综合毛利率 (%)", min_value=0.0, max_value=100.0, value=40.0)
-                    
+                    gross_margin = st.number_input("预估成交综合毛利率 (%)", min_value=0.0, max_value=100.0, value=40.0)               
                 c7, c8 = st.columns(2)
                 with c7:
                     payment = st.selectbox("付款方式", list(config["payment_coeffs"].keys()))
@@ -287,8 +295,9 @@ def main():
                 else:
                     row_data = {
                         "新品大类": category,
+                        "统采or地采": procurement_type,
                         "处方类别": selected_xp_category,
-                        "SKU数": sku_count,
+                        "同一供应商单次引进SKU数": sku_count,
                         "channel": channel,
                         "预估毛利率(%)": gross_margin,
                         "付款方式": payment,
@@ -396,7 +405,8 @@ def main():
                                 """, unsafe_allow_html=True)
 
                             if result.get('is_floor_triggered'):
-                                st.caption(f"⚠️ 已触发最低兜底费用: {result['min_floor']}元")
+                                procurement = result.get('procurement_type', '未知标准')
+                                st.caption(f"⚠️ 已触发最低兜底费用 ({procurement}): {result['min_floor']}元")
 
                             st.divider()
 
@@ -477,6 +487,13 @@ def main():
                             for index, row in df.iterrows():
                                 row_dict = row.to_dict()
                                 try:
+                                    # [新增] 批量模式下读取采购类型，如果Excel里没这一列，默认“统采”
+                                    p_type = row_dict.get('统采or地采')
+                                    if pd.isna(p_type) or str(p_type).strip() == "":
+                                        row_dict['统采or地采'] = "统采"
+                                    else:
+                                        row_dict['统采or地采'] = str(p_type).strip()
+
                                     channel_name = row_dict.get('铺货通道')
                                     batch_xp_cat = row_dict.get('处方类别')
                                     batch_target_code = xp_map.get(str(batch_xp_cat).strip()) if (batch_xp_cat and xp_map) else None

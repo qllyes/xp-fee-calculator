@@ -111,7 +111,7 @@ def load_config(config_path="config/coefficients.xlsx"):
     if '退货条件系数' in xls_dict:
         df = xls_dict['退货条件系数']
         config['return_policy_coeffs'] = dict(zip(df['退货条件'], df['系数']))
-
+    
     # 7. Supplier Type Coeffs
     if '供应商类型系数' in xls_dict:
         df = xls_dict['供应商类型系数']
@@ -120,7 +120,19 @@ def load_config(config_path="config/coefficients.xlsx"):
     # 8. Min Fee Floors
     if '最低保底费' in xls_dict:
         df = xls_dict['最低保底费']
-        config['min_fee_floors'] = dict(zip(df['新品大类'], df['保底费']))
+        # [修改点]：不再是一对一映射，而是存储完整的行数据或特定字段
+        # 新结构示例: {'中西成药': {'统采': 7500, '地采': 2000}, ...}
+        min_fee_floors = {}
+        if not df.empty:
+            for _, row in df.iterrows():
+                cat = row.get('新品大类')
+                if cat:
+                    min_fee_floors[cat] = {
+                        # 容错处理：如果Excel里没这两列，默认为0
+                        '统采': row.get('统采保底费', 0),
+                        '地采': row.get('地采保底费', 0)
+                    }
+        config['min_fee_floors'] = min_fee_floors
 
     # 9. Prescription Categories (New)
     # 假设 '处方类别' sheet页有一列叫 '处方类别'
