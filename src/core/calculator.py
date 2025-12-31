@@ -50,7 +50,10 @@ def calculate_fee(row_data, store_counts, config):
     coeffs = []
     
     # SKU Discount (SKU数量折扣)
-    sku_discount = get_coefficient(sku_count, config.get("sku_discounts", []))
+    all_sku_config = config.get("sku_discounts", {})
+    # 新逻辑：按大类取
+    sku_rules = all_sku_config.get(category, {})
+    sku_discount = get_coefficient(sku_count, sku_rules, default=1.0) # 默认系数1.0
     coeffs.append(("SKU数量折扣", sku_discount))
     
     # Gross Margin (毛利率系数)
@@ -63,10 +66,10 @@ def calculate_fee(row_data, store_counts, config):
     payment_coeff = config.get("payment_coeffs", {}).get(payment, 1.0)
     coeffs.append(("付款方式系数", payment_coeff))
     
-    # Cost Price (进价系数)
-    cost = row_data.get("进价", 0)
+    # Cost Price (底价系数)
+    cost = row_data.get("底价", 0)
     cost_coeff = get_coefficient(cost, config.get("cost_price_coeffs", []))
-    coeffs.append(("进价系数", cost_coeff))
+    coeffs.append(("底价系数", cost_coeff))
     
     # Return Policy (退货条件系数)
     ret_policy = row_data.get("退货条件")

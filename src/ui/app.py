@@ -200,7 +200,7 @@ def main():
                     
                 c5, c6 = st.columns(2)
                 with c5:
-                    cost_price = st.number_input("进价 (元)", min_value=0.0, value=10.0)
+                    cost_price = st.number_input("底价 (元)", min_value=0.0, value=10.0)
                 with c6:
                     gross_margin = st.number_input("预估成交综合毛利率 (%)", min_value=0.0, max_value=100.0, value=40.0)               
                 c7, c8 = st.columns(2)
@@ -212,7 +212,7 @@ def main():
                         xp_options = list(xp_map.keys())
                     if not xp_options:
                         xp_options = ["无 (未配置处方类别)"]
-                    selected_xp_category = st.selectbox("处方类别 (筛选受限门店)", xp_options)
+                    selected_xp_category = st.selectbox("处方类别", xp_options)
 
                 target_xp_code = xp_map.get(selected_xp_category) if xp_map else None
                 #st.markdown("---")
@@ -239,10 +239,10 @@ def main():
                 selected_custom_types = []
                 
                 if "标准通道" in channel_mode:
-                    color_selection = st.radio(
-                        "选择颜色",
-                        ["全量门店",'小店及以上','中店及以上','大店及以上','旗舰店及以上','超级旗舰店'],
-                        label_visibility="collapsed"
+                    color_selection = st.selectbox(
+                        "选择标准通道范围",
+                        ["全量门店", "小店及以上", "中店及以上", "大店及以上", "旗舰店及以上", "超级旗舰店"],
+                        label_visibility="collapsed" # 保持标签隐藏，与战区选择风格一致
                     )
                     channel = color_selection.split()[-1] 
                 else:
@@ -302,7 +302,7 @@ def main():
                         "预估毛利率(%)": gross_margin,
                         "付款方式": payment,
                         "供应商类型": supplier_type,
-                        "进价": cost_price,
+                        "底价": cost_price,
                         "退货条件": return_policy
                     }
                     if channel == "自定义" and "手动输入" in custom_sub_mode:
