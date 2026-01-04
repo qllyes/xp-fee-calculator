@@ -19,7 +19,6 @@ from src.core.calculator import calculate_fee
 from src.core.file_utils import read_excel_safe
 
 # Page Config
-# 保持 wide 模式，确保 Tab 栏不跳动
 st.set_page_config(page_title="新品铺货费计算器", page_icon="💰", layout="wide")
 
 # Load Config with Cache
@@ -299,18 +298,72 @@ def main():
                         st.caption("请选择筛选条件 (为空表示全选)")
                         
                         if store_master_df is not None:
-                            # 1. 区域维度 (多选)
+                            # 1. 区域维度 (多选) - 级联筛选逻辑
                             with st.expander("选择省公司/省份/城市", expanded=True):
                                 col_reg1, col_reg2, col_reg3 = st.columns(3)
+                                
+                                # --- 级联筛选逻辑 ---
+                                # 1. 初始化 Session State
+                                if "filter_company" not in st.session_state: st.session_state["filter_company"] = []
+                                if "filter_province" not in st.session_state: st.session_state["filter_province"] = []
+                                if "filter_city" not in st.session_state: st.session_state["filter_city"] = []
+
+                                # 2. 获取当前选中值
+                                sel_company = st.session_state["filter_company"]
+                                sel_province = st.session_state["filter_province"]
+                                sel_city = st.session_state["filter_city"]
+
+                                # 3. 定义过滤掩码 (Mask)
+                                def get_mask(col_name, selected_values):
+                                    if not selected_values:
+                                        # 关键修复：返回全真 Series 而不是 scalar True，防止 KeyError
+                                        return pd.Series(True, index=store_master_df.index)
+                                    return store_master_df[col_name].isin(selected_values)
+
+                                mask_company_cond = get_mask("省公司", sel_company)
+                                mask_province_cond = get_mask("省份", sel_province)
+                                mask_city_cond = get_mask("城市", sel_city)
+
+                                # 4. 动态计算每个字段的有效选项
+                                # 省公司选项：基于 (已选省份 & 已选城市)
+                                opts_company = sorted(store_master_df[mask_province_cond & mask_city_cond]["省公司"].dropna().unique())
+                                
+                                # 省份选项：基于 (已选省公司 & 已选城市)
+                                opts_province = sorted(store_master_df[mask_company_cond & mask_city_cond]["省份"].dropna().unique())
+                                
+                                # 城市选项：基于 (已选省公司 & 已选省份)
+                                opts_city = sorted(store_master_df[mask_company_cond & mask_province_cond]["城市"].dropna().unique())
+
+                                # 5. 清洗无效选项 (Sanitize)
+                                def sanitize(current, valid):
+                                    return [x for x in current if x in valid]
+
+                                st.session_state["filter_company"] = sanitize(st.session_state["filter_company"], opts_company)
+                                st.session_state["filter_province"] = sanitize(st.session_state["filter_province"], opts_province)
+                                st.session_state["filter_city"] = sanitize(st.session_state["filter_city"], opts_city)
+
+                                # 6. 渲染组件
                                 with col_reg1:
-                                    opts = get_unique_values(store_master_df, "省公司")
-                                    selected_filters["省公司"] = st.multiselect("省公司", opts, placeholder="全部 (默认)")
+                                    selected_filters["省公司"] = st.multiselect(
+                                        "省公司", 
+                                        options=opts_company,
+                                        key="filter_company",
+                                        placeholder="全部 (默认)"
+                                    )
                                 with col_reg2:
-                                    opts = get_unique_values(store_master_df, "省份")
-                                    selected_filters["省份"] = st.multiselect("省份", opts, placeholder="全部 (默认)")
+                                    selected_filters["省份"] = st.multiselect(
+                                        "省份", 
+                                        options=opts_province,
+                                        key="filter_province",
+                                        placeholder="全部 (默认)"
+                                    )
                                 with col_reg3:
-                                    opts = get_unique_values(store_master_df, "城市")
-                                    selected_filters["城市"] = st.multiselect("城市", opts, placeholder="全部 (默认)")
+                                    selected_filters["城市"] = st.multiselect(
+                                        "城市", 
+                                        options=opts_city,
+                                        key="filter_city",
+                                        placeholder="全部 (默认)"
+                                    )
                             
                             # 2. 门店属性 (包含：销售规模、原有属性、业务属性)
                             with st.expander("门店属性筛选", expanded=True):
