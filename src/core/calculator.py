@@ -26,7 +26,7 @@ def calculate_fee(row_data, store_counts, config):
         dict: detailed calculation result containing 'final_fee', 'theoretical_fee', etc.
     """
     category = row_data.get("新品大类")
-    sku_count = row_data.get("同一供应商单次引进SKU数", 0)
+    sku_count = row_data.get("同一供应商单次引进SKU数", 1)
     
     # 获取采购类型，默认为 '统采' (兼容旧数据或未选择的情况)
     procurement_type = row_data.get("统采or地采", "统采")

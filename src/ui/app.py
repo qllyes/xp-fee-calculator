@@ -398,6 +398,7 @@ def main():
                             st.info("💡 自定义(手动)模式：不进行'受限批文'门店剔除，按输入数量计算。")
                         elif channel == "自定义" and custom_sub_mode == "标签筛选":
                             is_auto_calc_mode = True
+                            #计算最终门店数 (传入了 target_xp_code，会剔除受限门店)
                             store_counts = calc_auto_counts(
                                 store_master_df, 
                                 channel, # "自定义"
@@ -406,6 +407,7 @@ def main():
                                 filters=selected_filters
                             )
                             if target_xp_code:
+                                #计算原始门店数 (restricted_xp_code 传了 None，即不进行受限剔除)
                                 raw_counts = calc_auto_counts(
                                     store_master_df, 
                                     channel, 
