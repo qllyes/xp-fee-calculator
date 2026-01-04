@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 
 # 异步操作脚本，不在main.py内，
 # 门店基础表，取上月最后一天的门店表来做门店基础表，
-# #从数据库加载到本地excel，提高前端响应速度
+# 从数据库加载到本地excel，提高前端响应速度
 
 # --- Database Configuration ---
 DB_CONFIG = {
@@ -56,7 +56,6 @@ def sync_data():
         df = pd.read_sql(SQL_QUERY, engine)
         
         # 3. Data Transformation (Optional)
-        
         row_count = len(df)
         print(f"✅ Fetched {row_count} rows.")
 
@@ -68,6 +67,13 @@ def sync_data():
         
         print(f"💾 Saving to {output_path}...")
         df.to_excel(output_path, index=False, engine='openpyxl')
+        
+        # 5. Generate Region Map (Unique combinations of Company/Province/City)
+        region_map_path = os.path.join(current_dir, "data", "region_map.xlsx")
+        print(f"💾 Generating region map to {region_map_path}...")
+        
+        region_df = df[['省公司', '省份', '城市']].dropna().drop_duplicates().sort_values(['省公司', '省份', '城市'])
+        region_df.to_excel(region_map_path, index=False, engine='openpyxl')
         
         print("🎉 Sync completed successfully!")
         

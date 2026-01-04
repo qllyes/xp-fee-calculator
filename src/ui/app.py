@@ -35,6 +35,12 @@ def get_xp_mapping(path):
     return load_xp_mapping(path)
 
 @st.cache_data
+def get_region_map(path):
+    if os.path.exists(path):
+        return pd.read_excel(path, engine='openpyxl')
+    return None
+
+@st.cache_data
 def get_unique_values(df, column):
     if df is None or column not in df.columns:
         return []
@@ -154,7 +160,10 @@ def main():
 
     # --- Data Loading (Auto) ---
     store_master_path = os.path.join(project_root, "data", "store_master.xlsx")
+    region_map_path = os.path.join(project_root, "data", "region_map.xlsx")
+    
     store_master_df = None
+    region_map_df = None
     update_time = "未知"
 
     if os.path.exists(store_master_path):
@@ -164,6 +173,9 @@ def main():
                 update_time = str(store_master_df["门店表更新时间"].iloc[0])
         except Exception as e:
             st.error(f"加载门店数据失败: {e}")
+            
+    if os.path.exists(region_map_path):
+        region_map_df = get_region_map(region_map_path)
     
     xp_mapping_path = os.path.join(project_root, "data", "处方类别与批文分类表.xlsx")
     xp_map = get_xp_mapping(xp_mapping_path)
@@ -297,7 +309,10 @@ def main():
                         # --- 标签筛选模式 ---
                         st.caption("请选择筛选条件 (为空表示全选)")
                         
-                        if store_master_df is not None:
+                        # 优先使用 region_map_df 进行级联筛选，性能更好
+                        filter_df = region_map_df if region_map_df is not None else store_master_df
+
+                        if filter_df is not None:
                             # 1. 区域维度 (多选) - 级联筛选逻辑
                             with st.expander("选择省公司/省份/城市", expanded=True):
                                 col_reg1, col_reg2, col_reg3 = st.columns(3)
@@ -316,9 +331,8 @@ def main():
                                 # 3. 定义过滤掩码 (Mask)
                                 def get_mask(col_name, selected_values):
                                     if not selected_values:
-                                        # 关键修复：返回全真 Series 而不是 scalar True，防止 KeyError
-                                        return pd.Series(True, index=store_master_df.index)
-                                    return store_master_df[col_name].isin(selected_values)
+                                        return pd.Series(True, index=filter_df.index)
+                                    return filter_df[col_name].isin(selected_values)
 
                                 mask_company_cond = get_mask("省公司", sel_company)
                                 mask_province_cond = get_mask("省份", sel_province)
@@ -326,13 +340,13 @@ def main():
 
                                 # 4. 动态计算每个字段的有效选项
                                 # 省公司选项：基于 (已选省份 & 已选城市)
-                                opts_company = sorted(store_master_df[mask_province_cond & mask_city_cond]["省公司"].dropna().unique())
+                                opts_company = sorted(filter_df[mask_province_cond & mask_city_cond]["省公司"].dropna().unique())
                                 
                                 # 省份选项：基于 (已选省公司 & 已选城市)
-                                opts_province = sorted(store_master_df[mask_company_cond & mask_city_cond]["省份"].dropna().unique())
+                                opts_province = sorted(filter_df[mask_company_cond & mask_city_cond]["省份"].dropna().unique())
                                 
                                 # 城市选项：基于 (已选省公司 & 已选省份)
-                                opts_city = sorted(store_master_df[mask_company_cond & mask_province_cond]["城市"].dropna().unique())
+                                opts_city = sorted(filter_df[mask_company_cond & mask_province_cond]["城市"].dropna().unique())
 
                                 # 5. 清洗无效选项 (Sanitize)
                                 def sanitize(current, valid):
@@ -366,6 +380,7 @@ def main():
                                     )
                             
                             # 2. 门店属性 (包含：销售规模、原有属性、业务属性)
+                            # 注意：这些属性不在 region_map 中，必须从 store_master_df 获取
                             with st.expander("门店属性筛选", expanded=True):
                                 # Row 1: 销售规模
                                 all_types = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
@@ -421,9 +436,6 @@ def main():
                 
                 if needs_master_data and store_master_df is None:
                     st.error("❌ 未找到门店主数据，无法进行自动计算（请检查 data/store_master.xlsx）！")
-                # 移除对销售规模必选的校验，因为现在空代表全选
-                # elif channel == "自定义" and custom_sub_mode == "标签筛选" and not selected_filters.get("销售规模"):
-                #     st.error("❌ 请至少勾选一种销售规模！")
                 else:
                     row_data = {
                         "新品大类": category,
