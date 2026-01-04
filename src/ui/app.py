@@ -230,7 +230,8 @@ def main():
                 channel_mode = st.radio(
                     "通道模式",
                     ["标准通道", "自定义通道"],
-                    label_visibility="collapsed"
+                    label_visibility="collapsed",
+                    horizontal=True # 横向排列
                 )
                 
                 channel = "自定义"

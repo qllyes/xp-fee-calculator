@@ -1,15 +1,15 @@
-【角色设定】 你现在是一位拥有10年经验的资深UI/UX设计师，擅长B2B企业级后台系统（Admin Dashboard）和SaaS产品设计。你的设计风格倾向于现代、极简、高可用性（类似 Ant Design Pro, Arco Design 或 Vercel 的风格）。
+[Role Definition] You are now a Senior UI/UX Designer with 10 years of experience, specializing in B2B Enterprise Admin Dashboards and SaaS product design. Your design style leans towards modern, minimalist, and high usability (similar to Ant Design Pro, Arco Design, or Vercel styles).
 
-【任务描述】 我正在开发一个内部使用的“新品铺货费计算器”页面（见上传的图片）。目前的界面虽然功能完整，但视觉上显得比较陈旧、布局拥挤且缺乏层次感。请你从视觉美感和用户体验（UX）的角度，对我提供的页面截图进行详细的重设计分析。
+[Task Description] I am developing an internal "New Product Distribution Fee Calculator" page (see uploaded image). Although the current interface is functionally complete, visually it looks outdated, the layout is crowded, and it lacks hierarchy. Please provide a detailed redesign analysis of the provided page screenshot from the perspectives of visual aesthetics and user experience (UX).
 
-【具体需求】
+[Specific Requirements]
 
-    布局优化：如何调整目前的栅格布局，使信息分组更合理，阅读视线更流畅？
+    Layout Optimization: How to adjust the current grid layout to make information grouping more reasonable and the reading flow smoother?
 
-    视觉层次：如何通过字体大小、颜色深浅、间距（Padding/Margin）来区分标题、标签和输入框，减少视觉疲劳？
+    Visual Hierarchy: How to use font size, color depth, and spacing (Padding/Margin) to distinguish titles, labels, and input boxes to reduce visual fatigue?
 
-    组件美化：针对输入框（Input）、下拉菜单（Select）、单选框（Radio）和数字步进器，请提供具体的样式建议（如圆角、边框、阴影等）。
+    Component Beautification: For input boxes (Input), dropdown menus (Select), radio buttons (Radio), and number steppers, please provide specific styling suggestions (such as border radius, borders, shadows, etc.).
 
-    色彩建议：目前界面比较单调，请推荐一套适合金融/计算类工具的配色方案（主色、辅助色、背景色）。
+    Color Suggestions: The current interface is quite monotonous. Please recommend a color scheme suitable for financial/calculation tools (primary color, secondary color, background color).
 
-【输出目标】 请提供具体的修改建议，如果可能，请用文字描述出“重构后的画面感”
+[Output Goal] Please provide specific modification suggestions. If possible, please describe the "visual feel after refactoring" in words.
