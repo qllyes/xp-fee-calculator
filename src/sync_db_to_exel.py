@@ -2,6 +2,7 @@ import pandas as pd
 import pymysql
 import os
 from sqlalchemy import create_engine
+import json
 
 # 异步操作脚本，不在main.py内，
 # 门店基础表，取上月最后一天的门店表来做门店基础表，
@@ -62,18 +63,43 @@ def sync_data():
         # 4. Save to Excel
         # Ensure the data directory exists
         current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        output_path = os.path.join(current_dir, "data", "store_master.xlsx")
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        data_dir = os.path.join(current_dir, "data")
+        os.makedirs(data_dir, exist_ok=True)
         
+        output_path = os.path.join(data_dir, "store_master.xlsx")
         print(f"💾 Saving to {output_path}...")
         df.to_excel(output_path, index=False, engine='openpyxl')
         
         # 5. Generate Region Map (Unique combinations of Company/Province/City)
-        region_map_path = os.path.join(current_dir, "data", "region_map.xlsx")
+        region_map_path = os.path.join(data_dir, "region_map.xlsx")
         print(f"💾 Generating region map to {region_map_path}...")
-        
         region_df = df[['省公司', '省份', '城市']].dropna().drop_duplicates().sort_values(['省公司', '省份', '城市'])
         region_df.to_excel(region_map_path, index=False, engine='openpyxl')
+        
+        # 6. Generate Dimension Metadata (JSON for UI dropdowns)
+        metadata_path = os.path.join(data_dir, "dim_metadata.json")
+        print(f"💾 Generating dimension metadata to {metadata_path}...")
+        
+        metadata = {
+            "店龄店型": sorted(df["店龄店型"].dropna().unique().tolist()),
+            "行政区划等级": sorted(df["行政区划等级"].dropna().unique().tolist()),
+            "公域O2O店型": sorted(df["公域O2O店型"].dropna().unique().tolist()),
+            # 特殊处理：客流商圈 (逗号分隔)
+            "客流商圈": sorted(list(set([
+                p.strip() 
+                for val in df["客流商圈"].dropna().astype(str) 
+                for p in val.replace("，", ",").split(",") if p.strip()
+            ]))),
+            "销售规模": ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"],
+            # 新增：业务属性布尔值提取
+            "是否医保店": sorted(df["是否医保店"].dropna().unique().tolist()),
+            "是否O2O门店": sorted(df["是否O2O门店"].dropna().unique().tolist()),
+            "是否统筹店": sorted(df["是否统筹店"].dropna().unique().tolist()),
+            "更新时间": str(df["门店表更新时间"].iloc[0]) if "门店表更新时间" in df.columns else "未知"
+        }
+        
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, ensure_ascii=False, indent=2)
         
         print("🎉 Sync completed successfully!")
         

@@ -3,6 +3,7 @@ import pandas as pd
 import base64
 import os
 import sys
+import json
 from io import BytesIO
 from datetime import datetime
 
@@ -41,19 +42,11 @@ def get_region_map(path):
     return None
 
 @st.cache_data
-def get_unique_values(df, column):
-    if df is None or column not in df.columns:
-        return []
-    
-    # 特殊处理：客流商圈 (逗号分隔)
-    if column == "客流商圈":
-        all_vals = []
-        for val in df[column].dropna().astype(str):
-            parts = val.replace("，", ",").split(",")
-            all_vals.extend([p.strip() for p in parts if p.strip()])
-        return sorted(list(set(all_vals)))
-    
-    return sorted(df[column].dropna().unique().tolist())
+def get_dim_metadata(path):
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
 
 try:
     config_path = os.path.join(project_root, "config", "coefficients.xlsx")
@@ -77,7 +70,7 @@ def main():
             gap: 0.5rem !important;
         }
         
-        /* 3. 压缩输入框本身的高度和边距 */
+        /* 3. 压缩输入框本身的高度 and 边距 */
         .stNumberInput, .stSelectbox, .stTextInput, .stMultiSelect {
             margin-bottom: -5px !important;
         }
@@ -90,16 +83,6 @@ def main():
         [data-testid="stMetricValue"] {
             font-size: 1.8rem !important;
             font-weight: 700 !important;
-        }
-
-        /* 6. 【精准定位】只让 6 个手动输入框的标签和内容居中 */
-        div[data-testid="stNumberInput"]:has(input[aria-label="超级旗舰店"]),
-        div[data-testid="stNumberInput"]:has(input[aria-label="旗舰店"]),
-        div[data-testid="stNumberInput"]:has(input[aria-label="大店"]),
-        div[data-testid="stNumberInput"]:has(input[aria-label="中店"]),
-        div[data-testid="stNumberInput"]:has(input[aria-label="小店"]),
-        div[data-testid="stNumberInput"]:has(input[aria-label="成长店"]) {
-            /* 容器样式 */
         }
 
         /* 让标签居中 */
@@ -125,19 +108,19 @@ def main():
         }
         /* 7. 压缩标题 (H2) 的下边距 */
         h2 {
-            margin-bottom: 0.2rem !important; /* 原本很大，改为极小 */
+            margin-bottom: 0.2rem !important;
             padding-bottom: 0rem !important;
         }
 
         /* 8. 向上提拉 Tab 栏，消除默认的大间隙 */
         .stTabs {
-            margin-top: -1.5rem !important;   /* 核心：负边距把 Tab 往上拉 */
+            margin-top: -1.5rem !important;
         }
 
-        /* 9. 自定义 secondary 按钮（下载模板按钮）的背景色 */
+        /* 9. 自定义 secondary 按钮的背景色 */
         button[kind="secondary"] {
-            background-color: #F0F2F6 !important; /* 浅灰色背景 */
-            border: 1px solid #D1D5DB !important; /* 稍微深一点的边框 */
+            background-color: #F0F2F6 !important;
+            border: 1px solid #D1D5DB !important;
             color: #31333F !important;
         }
         
@@ -147,7 +130,7 @@ def main():
             border-color: #B0B5BE !important;
         }
 
-        /* 10. 限制多选框最大高度，避免撑开布局 */
+        /* 10. 限制多选框最大高度 */
         .stMultiSelect div[data-baseweb="select"] > div {
             max-height: 46px !important;
             overflow-y: auto !important;
@@ -161,9 +144,11 @@ def main():
     # --- Data Loading (Auto) ---
     store_master_path = os.path.join(project_root, "data", "store_master.xlsx")
     region_map_path = os.path.join(project_root, "data", "region_map.xlsx")
+    metadata_path = os.path.join(project_root, "data", "dim_metadata.json")
     
     store_master_df = None
     region_map_df = None
+    dim_metadata = None
     update_time = "未知"
 
     if os.path.exists(store_master_path):
@@ -176,6 +161,11 @@ def main():
             
     if os.path.exists(region_map_path):
         region_map_df = get_region_map(region_map_path)
+        
+    if os.path.exists(metadata_path):
+        dim_metadata = get_dim_metadata(metadata_path)
+        if dim_metadata and "更新时间" in dim_metadata:
+            update_time = dim_metadata["更新时间"]
     
     xp_mapping_path = os.path.join(project_root, "data", "处方类别与批文分类表.xlsx")
     xp_map = get_xp_mapping(xp_mapping_path)
@@ -201,21 +191,18 @@ def main():
     # --- Tabs ---
     tab1, tab2 = st.tabs(["🏷️ 单品计算器", "📂 批量计算器"])
 
-    # --- Tab 1: 单品计算器 (居中布局) ---
+    # --- Tab 1: 单品计算器 ---
     with tab1:
-        spacer_left, col_center, spacer_right = st.columns([1.5, 7, 1.5]) # 这里调整为 1:3:1 让中间稍微宽一点
+        spacer_left, col_center, spacer_right = st.columns([1.5, 7, 1.5])
         
         with col_center:
             with st.container(border=True):
                 st.markdown("<div style='font-size: 18px; font-weight: bold; margin-bottom: 10px;'>📝 通道计算器 -- 输入信息</div>", unsafe_allow_html=True)
                 
-                # [新增功能] 采购类型选择，独占一行，放在最前面
-                # 对应需求：前端新增的【统采or地采】放在【新品大类】前面，独自占一行
                 procurement_type = st.selectbox(
                     "统采or地采", 
                     ["统采", "地采"],
-                    index=0, # 默认统采
-                    # help="选择统采或地采将影响最低保底费用的取值"
+                    index=0,
                 )
 
                 c1, c2 = st.columns(2)
@@ -239,15 +226,15 @@ def main():
                 with c7:
                     payment = st.selectbox("付款方式", list(config["payment_coeffs"].keys()))
                 with c8:
-                    xp_options = config.get("prescription_categories", [])
-                    if not xp_options and xp_map:
-                        xp_options = list(xp_map.keys())
-                    if not xp_options:
-                        xp_options = ["无 (未配置处方类别)"]
+                    # [优化] 处方类别严格以映射表(xp_map)为准，确保能获取到 target_xp_code
+                    if xp_map:
+                        xp_options = sorted(list(xp_map.keys()))
+                    else:
+                        xp_options = ["无 (未找到映射表)"]
+                        
                     selected_xp_category = st.selectbox("处方类别", xp_options)
 
                 target_xp_code = xp_map.get(selected_xp_category) if xp_map else None
-                #st.markdown("---")
                 
                 st.markdown("""
                             <div style="
@@ -263,7 +250,7 @@ def main():
                     "通道模式",
                     ["标准通道", "自定义通道"],
                     label_visibility="collapsed",
-                    horizontal=True # 横向排列
+                    horizontal=True
                 )
                 
                 channel = "自定义"
@@ -275,12 +262,11 @@ def main():
                     color_selection = st.selectbox(
                         "选择标准通道范围",
                         ["全量门店", "小店及以上", "中店及以上", "大店及以上", "旗舰店及以上", "超级旗舰店"],
-                        label_visibility="collapsed" # 保持标签隐藏，与战区选择风格一致
+                        label_visibility="collapsed"
                     )
                     channel = color_selection.split()[-1] 
                 else:
                     channel = "自定义"
-                    # 使用 segmented_control (如果版本支持) 或 radio
                     try:
                         custom_sub_mode = st.segmented_control(
                             "自定义输入方式",
@@ -309,7 +295,6 @@ def main():
                         # --- 标签筛选模式 ---
                         st.caption("请选择筛选条件 (为空表示全选)")
                         
-                        # 优先使用 region_map_df 进行级联筛选，性能更好
                         filter_df = region_map_df if region_map_df is not None else store_master_df
 
                         if filter_df is not None:
@@ -317,18 +302,14 @@ def main():
                             with st.expander("选择省公司/省份/城市", expanded=True):
                                 col_reg1, col_reg2, col_reg3 = st.columns(3)
                                 
-                                # --- 级联筛选逻辑 ---
-                                # 1. 初始化 Session State
                                 if "filter_company" not in st.session_state: st.session_state["filter_company"] = []
                                 if "filter_province" not in st.session_state: st.session_state["filter_province"] = []
                                 if "filter_city" not in st.session_state: st.session_state["filter_city"] = []
 
-                                # 2. 获取当前选中值
                                 sel_company = st.session_state["filter_company"]
                                 sel_province = st.session_state["filter_province"]
                                 sel_city = st.session_state["filter_city"]
 
-                                # 3. 定义过滤掩码 (Mask)
                                 def get_mask(col_name, selected_values):
                                     if not selected_values:
                                         return pd.Series(True, index=filter_df.index)
@@ -338,17 +319,10 @@ def main():
                                 mask_province_cond = get_mask("省份", sel_province)
                                 mask_city_cond = get_mask("城市", sel_city)
 
-                                # 4. 动态计算每个字段的有效选项
-                                # 省公司选项：基于 (已选省份 & 已选城市)
                                 opts_company = sorted(filter_df[mask_province_cond & mask_city_cond]["省公司"].dropna().unique())
-                                
-                                # 省份选项：基于 (已选省公司 & 已选城市)
                                 opts_province = sorted(filter_df[mask_company_cond & mask_city_cond]["省份"].dropna().unique())
-                                
-                                # 城市选项：基于 (已选省公司 & 已选省份)
                                 opts_city = sorted(filter_df[mask_company_cond & mask_province_cond]["城市"].dropna().unique())
 
-                                # 5. 清洗无效选项 (Sanitize)
                                 def sanitize(current, valid):
                                     return [x for x in current if x in valid]
 
@@ -356,66 +330,53 @@ def main():
                                 st.session_state["filter_province"] = sanitize(st.session_state["filter_province"], opts_province)
                                 st.session_state["filter_city"] = sanitize(st.session_state["filter_city"], opts_city)
 
-                                # 6. 渲染组件
                                 with col_reg1:
-                                    selected_filters["省公司"] = st.multiselect(
-                                        "省公司", 
-                                        options=opts_company,
-                                        key="filter_company",
-                                        placeholder="全部 (默认)"
-                                    )
+                                    selected_filters["省公司"] = st.multiselect("省公司", options=opts_company, key="filter_company", placeholder="全部 (默认)")
                                 with col_reg2:
-                                    selected_filters["省份"] = st.multiselect(
-                                        "省份", 
-                                        options=opts_province,
-                                        key="filter_province",
-                                        placeholder="全部 (默认)"
-                                    )
+                                    selected_filters["省份"] = st.multiselect("省份", options=opts_province, key="filter_province", placeholder="全部 (默认)")
                                 with col_reg3:
-                                    selected_filters["城市"] = st.multiselect(
-                                        "城市", 
-                                        options=opts_city,
-                                        key="filter_city",
-                                        placeholder="全部 (默认)"
-                                    )
+                                    selected_filters["城市"] = st.multiselect("城市", options=opts_city, key="filter_city", placeholder="全部 (默认)")
                             
-                            # 2. 门店属性 (包含：销售规模、原有属性、业务属性)
-                            # 注意：这些属性不在 region_map 中，必须从 store_master_df 获取
+                            # 2. 门店属性
                             with st.expander("门店属性筛选", expanded=True):
                                 # Row 1: 销售规模
-                                all_types = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
-                                selected_filters["销售规模"] = st.multiselect("销售规模", all_types, default=[], placeholder="全部 (默认)")
+                                sales_scale_opts = dim_metadata["销售规模"] if dim_metadata else ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
+                                selected_filters["销售规模"] = st.multiselect("销售规模", sales_scale_opts, default=[], placeholder="全部 (默认)")
 
                                 # Row 2: 店龄店型 & 客流商圈
                                 col_attr1, col_attr2 = st.columns(2)
                                 with col_attr1:
-                                    opts = get_unique_values(store_master_df, "店龄店型")
+                                    opts = dim_metadata["店龄店型"] if dim_metadata else []
                                     selected_filters["店龄店型"] = st.multiselect("店龄店型", opts, placeholder="全部 (默认)")
                                 with col_attr2:
-                                    opts = get_unique_values(store_master_df, "客流商圈")
+                                    opts = dim_metadata["客流商圈"] if dim_metadata else []
                                     selected_filters["客流商圈"] = st.multiselect("客流商圈", opts, placeholder="全部 (默认)")
                                 
                                 # Row 3: 行政区划 & 公域O2O
                                 col_attr3, col_attr4 = st.columns(2)
                                 with col_attr3:
-                                    opts = get_unique_values(store_master_df, "行政区划等级")
+                                    opts = dim_metadata["行政区划等级"] if dim_metadata else []
                                     selected_filters["行政区划等级"] = st.multiselect("行政区划等级", opts, placeholder="全部 (默认)")
                                 with col_attr4:
-                                    opts = get_unique_values(store_master_df, "公域O2O店型")
+                                    opts = dim_metadata["公域O2O店型"] if dim_metadata else []
                                     selected_filters["公域O2O店型"] = st.multiselect("公域O2O店型", opts, placeholder="全部 (默认)")
 
-                                # Row 4: 业务属性 (单选: 全部/是/否)
+                                # Row 4: 业务属性
                                 st.markdown("---")
                                 col_bool1, col_bool2, col_bool3 = st.columns(3)
-                                bool_opts = ["全部", "是", "否"]
+                                
+                                # 动态构建选项，确保“全部”永远在第一位
+                                insurance_opts = ["全部"] + (dim_metadata.get("是否医保店", ["是", "否"]) if dim_metadata else ["是", "否"])
+                                o2o_opts = ["全部"] + (dim_metadata.get("是否O2O门店", ["是", "否"]) if dim_metadata else ["是", "否"])
+                                coor_opts = ["全部"] + (dim_metadata.get("是否统筹店", ["是", "否"]) if dim_metadata else ["是", "否"])
+                                
                                 with col_bool1:
-                                    selected_filters["是否医保店"] = st.selectbox("是否医保店", bool_opts)
+                                    selected_filters["是否医保店"] = st.selectbox("是否医保店", insurance_opts)
                                 with col_bool2:
-                                    selected_filters["是否O2O门店"] = st.selectbox("是否O2O门店", bool_opts)
+                                    selected_filters["是否O2O门店"] = st.selectbox("是否O2O门店", o2o_opts)
                                 with col_bool3:
-                                    selected_filters["是否统筹店"] = st.selectbox("是否统筹店", bool_opts)
+                                    selected_filters["是否统筹店"] = st.selectbox("是否统筹店", coor_opts)
 
-                # [新增] 提报战区选择 (全局，但不在自定义筛选内)
                 st.markdown("""
                             <div style="
                                 font-size: 16px; 
@@ -435,7 +396,7 @@ def main():
                 needs_master_data = (channel != "自定义") or (custom_sub_mode == "标签筛选")
                 
                 if needs_master_data and store_master_df is None:
-                    st.error("❌ 未找到门店主数据，无法进行自动计算（请检查 data/store_master.xlsx）！")
+                    st.error("❌ 未找到门店主数据，无法进行自动计算！")
                 else:
                     row_data = {
                         "新品大类": category,
@@ -460,19 +421,16 @@ def main():
 
                         if channel == "自定义" and custom_sub_mode == "手动输入":
                             store_counts = extract_manual_counts(row_data)
-                            st.info("💡 自定义(手动)模式：不进行'受限批文'门店剔除，按输入数量计算。")
                         elif channel == "自定义" and custom_sub_mode == "标签筛选":
                             is_auto_calc_mode = True
-                            #计算最终门店数 (传入了 target_xp_code，会剔除受限门店)
                             store_counts = calc_auto_counts(
                                 store_master_df, 
-                                channel, # "自定义"
+                                channel, 
                                 restricted_xp_code=target_xp_code,
                                 war_zone=selected_war_zone,
                                 filters=selected_filters
                             )
                             if target_xp_code:
-                                #计算原始门店数 (restricted_xp_code 传了 None，即不进行受限剔除)
                                 raw_counts = calc_auto_counts(
                                     store_master_df, 
                                     channel, 
@@ -520,7 +478,6 @@ def main():
                                 .metric-value {
                                     font-size: 1.8rem;
                                     font-weight: 700;
-                                    font-family: 'Source Sans Pro', sans-serif;
                                 }
                             </style>
                             """
@@ -558,7 +515,7 @@ def main():
 
                             st.divider()
 
-                            with st.expander("👁️ 查看计算过程详情 (门店分布&系数)", expanded=False):
+                            with st.expander("👁️ 查看计算过程详情", expanded=False):
                                 col_detail_2, col_detail_1 = st.columns(2)
                                 with col_detail_1:
                                     st.markdown("📉 计算系数")
@@ -577,8 +534,6 @@ def main():
                                 total_stores = sum(result['store_details'].values())
                                 footer_text = f"计算池中的门店数量: {total_stores:,}"
                                 if is_auto_calc_mode and target_xp_code: footer_text += f" | 剔除受限门店数: {excluded_count}"
-                                elif is_auto_calc_mode: footer_text += f" | 无受限门店剔除"
-                                else: footer_text += " (手动输入模式)"
                                 st.caption(footer_text)
 
                         with st.expander("规则说明"):
@@ -608,20 +563,17 @@ def main():
         st.markdown("---")
         uploaded_batch = st.file_uploader("上传批量Excel文件", type=["xlsx"])
 
-        # [修复逻辑 1] 初始化 Session State
         if "batch_last_file_id" not in st.session_state:
             st.session_state.batch_last_file_id = None
         if "batch_results_df" not in st.session_state:
             st.session_state.batch_results_df = None
 
         if uploaded_batch:
-            # [修复逻辑 2] 检测文件是否变化，如果变化则清空之前的结果
             current_file_id = uploaded_batch.file_id
             if current_file_id != st.session_state.batch_last_file_id:
                 st.session_state.batch_results_df = None
                 st.session_state.batch_last_file_id = current_file_id
 
-            # [修复逻辑 3] 点击按钮只负责计算和保存结果到 Session，不负责显示
             if st.button("开始批量计算", type="primary", use_container_width=True):
                 if store_master_df is None:
                     st.error("❌ 未找到门店主数据，请检查 data/store_master.xlsx 文件！")
@@ -635,7 +587,6 @@ def main():
                             for index, row in df.iterrows():
                                 row_dict = row.to_dict()
                                 try:
-                                    # [新增] 批量模式下读取采购类型，如果Excel里没这一列，默认“统采”
                                     p_type = row_dict.get('统采or地采')
                                     if pd.isna(p_type) or str(p_type).strip() == "":
                                         row_dict['统采or地采'] = "统采"
@@ -646,7 +597,6 @@ def main():
                                     batch_xp_cat = row_dict.get('处方类别')
                                     batch_target_code = xp_map.get(str(batch_xp_cat).strip()) if (batch_xp_cat and xp_map) else None
                                     
-                                    # [新增] 批量计算读取战区
                                     batch_war_zone = row_dict.get('提报战区')
                                     if pd.isna(batch_war_zone) or str(batch_war_zone).strip() == "" or str(batch_war_zone).strip() == "全集团":
                                         batch_war_zone = "全集团"
@@ -655,18 +605,15 @@ def main():
 
                                     excluded_count = 0
 
-                                    # 1. 计算 Store Counts
                                     if channel_name == "自定义":
                                         store_counts = extract_manual_counts(row_dict)
                                     else:
-                                        # 计算过滤后的门店数
                                         store_counts = calc_auto_counts(
                                             store_master_df, 
                                             channel_name, 
                                             restricted_xp_code=batch_target_code,
                                             war_zone=batch_war_zone
                                         )
-                                        # 如果有处方限制，计算剔除数量
                                         if batch_target_code:
                                             raw_counts = calc_auto_counts(
                                                 store_master_df, 
@@ -676,14 +623,12 @@ def main():
                                             )
                                             excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
                                     
-                                    # 2. 费用计算
                                     result = calculate_fee(row_dict, store_counts, config)
                                     
                                     row_dict['理论总新品铺货费 (元)'] = int(result['theoretical_fee'])
                                     row_dict['折扣'] = result['discount_factor']
                                     row_dict['折后总新品铺货费 (元)'] = int(result['final_fee'])
                                     
-                                    # 详情拆分
                                     active_stores = {k: v for k, v in result['store_details'].items() if v > 0}
                                     row_dict['[详情]门店分布'] = str(active_stores)
                                     
@@ -706,14 +651,11 @@ def main():
                             
                             result_df = pd.DataFrame(results)
                             st.success("批量计算完成！")
-                            
-                            # [关键步骤] 将结果存入 Session State，而不是直接显示
                             st.session_state.batch_results_df = result_df
 
                     except Exception as e:
                         st.error(f"处理文件失败: {e}")
             
-            # [修复逻辑 4] 只要 Session State 中有结果，就显示（独立于按钮点击事件）
             if st.session_state.batch_results_df is not None:
                 st.dataframe(st.session_state.batch_results_df.head())
                 
