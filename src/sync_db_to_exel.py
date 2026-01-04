@@ -18,20 +18,25 @@ DB_CONFIG = {
 
 # --- SQL Query ---
 SQL_QUERY = """
-SELECT DISTINCT 
-    t1.shop_code AS `门店sapid`,
-    t1.lev3_org_name AS `DHR战区`,
-    t1.lev3_org_name_xp AS `提报战区`,
-    t1.sales_scan_name AS `销售规模`,
-    t2.forbid_goods_aprl_types_code AS `受限批文分类编码`,
-    t2.forbid_goods_aprl_types_name AS `受限批文分类名称`,
-    t1.dt as `门店表更新时间`
-FROM xp_shops_info_qll_dfp t1
-LEFT JOIN mid_shop_med_insu_forbid_sale_goodstype_dfn t2
-    ON t1.shop_code = t2.shop_code
-WHERE t1.shop_age_and_type_code NOT IN ('5', '6', '7', '11')
-  AND t1.busi_ascr_code IN ('1', '4')
-  AND t1.dt = '2025-12-25'
+SELECT  shop_code                    AS `门店sapid`
+       ,lev3_org_name                AS `DHR战区`
+       ,lev3_org_name_xp             AS `提报战区`
+       ,sales_scan_name              AS `销售规模`
+       ,forbid_goods_aprl_types_code AS `受限批文分类编码`
+       ,forbid_goods_aprl_types_name AS `受限批文分类名称`
+       ,shop_update_time             AS `门店表更新时间`
+       ,company_name                 AS `省公司`
+       ,city_name                    AS `城市`
+       ,prov_name                    AS `省份`
+       ,shop_age_and_type_name       AS `店龄店型`
+       ,busi_district_type_name      AS `客流商圈`
+       ,admin_area_name              AS `行政区划等级`
+       ,shop_o2o_type                AS `公域O2O店型`
+       ,is_focus_shop_o2o            AS `是否O2O门店`
+       ,is_med_insu_shop             AS `是否医保店`
+       ,is_op_coor_shop              AS `是否统筹店`
+FROM xp_dist_fee_shop_tag_dfp
+WHERE dt = LAST_DAY(DATE_SUB(CURDATE(), INTERVAL 1 MONTH)) 
 """
 
 def sync_data():
