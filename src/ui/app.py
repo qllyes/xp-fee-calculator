@@ -35,6 +35,21 @@ def get_store_master(path):
 def get_xp_mapping(path):
     return load_xp_mapping(path)
 
+@st.cache_data
+def get_unique_values(df, column):
+    if df is None or column not in df.columns:
+        return []
+    
+    # 特殊处理：客流商圈 (逗号分隔)
+    if column == "客流商圈":
+        all_vals = []
+        for val in df[column].dropna().astype(str):
+            parts = val.replace("，", ",").split(",")
+            all_vals.extend([p.strip() for p in parts if p.strip()])
+        return sorted(list(set(all_vals)))
+    
+    return sorted(df[column].dropna().unique().tolist())
+
 try:
     config_path = os.path.join(project_root, "config", "coefficients.xlsx")
     config = get_config(config_path)
@@ -58,7 +73,7 @@ def main():
         }
         
         /* 3. 压缩输入框本身的高度和边距 */
-        .stNumberInput, .stSelectbox, .stTextInput {
+        .stNumberInput, .stSelectbox, .stTextInput, .stMultiSelect {
             margin-bottom: -5px !important;
         }
         
@@ -125,6 +140,12 @@ def main():
         button[kind="secondary"]:hover {
             background-color: #E6E9EF !important;
             border-color: #B0B5BE !important;
+        }
+
+        /* 10. 限制多选框最大高度，避免撑开布局 */
+        .stMultiSelect div[data-baseweb="select"] > div {
+            max-height: 46px !important;
+            overflow-y: auto !important;
         }
         
         </style>
@@ -237,7 +258,7 @@ def main():
                 channel = "自定义"
                 custom_sub_mode = "手动输入"
                 manual_counts = {}
-                selected_custom_types = []
+                selected_filters = {}
                 
                 if "标准通道" in channel_mode:
                     color_selection = st.selectbox(
@@ -248,13 +269,23 @@ def main():
                     channel = color_selection.split()[-1] 
                 else:
                     channel = "自定义"
-                    custom_sub_mode = st.radio(
-                        "自定义输入方式:",
-                        ["手动输入门店数", "自定义销售规模"],
-                        horizontal=True
-                    )
+                    # 使用 segmented_control (如果版本支持) 或 radio
+                    try:
+                        custom_sub_mode = st.segmented_control(
+                            "自定义输入方式",
+                            ["标签筛选", "手动输入"],
+                            default="标签筛选",
+                            label_visibility="collapsed"
+                        )
+                    except AttributeError:
+                        custom_sub_mode = st.radio(
+                            "自定义输入方式:",
+                            ["标签筛选", "手动输入"],
+                            horizontal=True,
+                            label_visibility="collapsed"
+                        )
                     
-                    if "手动输入" in custom_sub_mode:
+                    if custom_sub_mode == "手动输入":
                         st.caption("请输入各销售规模门店数量:")
                         col_inputs = st.columns(6)
                         with col_inputs[0]: manual_counts["超级旗舰店"] = st.number_input("超级旗舰店", min_value=0, key="custom_super")
@@ -264,13 +295,59 @@ def main():
                         with col_inputs[4]: manual_counts["小店"] = st.number_input("小店", min_value=0, key="custom_small")
                         with col_inputs[5]: manual_counts["成长店"] = st.number_input("成长店", min_value=0, key="custom_grow")
                     else:
-                        st.caption("请选择需要铺货的销售规模")
-                        all_types = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
-                        selected_custom_types = st.multiselect("销售规模", all_types, default=["小店"], label_visibility="collapsed")
-                        if not selected_custom_types:
-                            st.warning("⚠️ 请至少选择一种销售规模")
+                        # --- 标签筛选模式 ---
+                        st.caption("请选择筛选条件 (为空表示全选)")
+                        
+                        if store_master_df is not None:
+                            # 1. 区域维度 (多选)
+                            with st.expander("选择省公司/省份/城市", expanded=True):
+                                col_reg1, col_reg2, col_reg3 = st.columns(3)
+                                with col_reg1:
+                                    opts = get_unique_values(store_master_df, "省公司")
+                                    selected_filters["省公司"] = st.multiselect("省公司", opts, placeholder="全部 (默认)")
+                                with col_reg2:
+                                    opts = get_unique_values(store_master_df, "省份")
+                                    selected_filters["省份"] = st.multiselect("省份", opts, placeholder="全部 (默认)")
+                                with col_reg3:
+                                    opts = get_unique_values(store_master_df, "城市")
+                                    selected_filters["城市"] = st.multiselect("城市", opts, placeholder="全部 (默认)")
+                            
+                            # 2. 门店属性 (包含：销售规模、原有属性、业务属性)
+                            with st.expander("门店属性筛选", expanded=True):
+                                # Row 1: 销售规模
+                                all_types = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
+                                selected_filters["销售规模"] = st.multiselect("销售规模", all_types, default=[], placeholder="全部 (默认)")
 
-                # [新增] 提报战区选择
+                                # Row 2: 店龄店型 & 客流商圈
+                                col_attr1, col_attr2 = st.columns(2)
+                                with col_attr1:
+                                    opts = get_unique_values(store_master_df, "店龄店型")
+                                    selected_filters["店龄店型"] = st.multiselect("店龄店型", opts, placeholder="全部 (默认)")
+                                with col_attr2:
+                                    opts = get_unique_values(store_master_df, "客流商圈")
+                                    selected_filters["客流商圈"] = st.multiselect("客流商圈", opts, placeholder="全部 (默认)")
+                                
+                                # Row 3: 行政区划 & 公域O2O
+                                col_attr3, col_attr4 = st.columns(2)
+                                with col_attr3:
+                                    opts = get_unique_values(store_master_df, "行政区划等级")
+                                    selected_filters["行政区划等级"] = st.multiselect("行政区划等级", opts, placeholder="全部 (默认)")
+                                with col_attr4:
+                                    opts = get_unique_values(store_master_df, "公域O2O店型")
+                                    selected_filters["公域O2O店型"] = st.multiselect("公域O2O店型", opts, placeholder="全部 (默认)")
+
+                                # Row 4: 业务属性 (单选: 全部/是/否)
+                                st.markdown("---")
+                                col_bool1, col_bool2, col_bool3 = st.columns(3)
+                                bool_opts = ["全部", "是", "否"]
+                                with col_bool1:
+                                    selected_filters["是否医保店"] = st.selectbox("是否医保店", bool_opts)
+                                with col_bool2:
+                                    selected_filters["是否O2O门店"] = st.selectbox("是否O2O门店", bool_opts)
+                                with col_bool3:
+                                    selected_filters["是否统筹店"] = st.selectbox("是否统筹店", bool_opts)
+
+                # [新增] 提报战区选择 (全局，但不在自定义筛选内)
                 st.markdown("""
                             <div style="
                                 font-size: 16px; 
@@ -287,12 +364,13 @@ def main():
                 selected_war_zone = st.selectbox("选择战区", war_zone_options, label_visibility="collapsed")
 
             if st.button("开始计算", type="primary", use_container_width=True):
-                needs_master_data = (channel != "自定义") or ("自定义销售规模" in custom_sub_mode)
+                needs_master_data = (channel != "自定义") or (custom_sub_mode == "标签筛选")
                 
                 if needs_master_data and store_master_df is None:
                     st.error("❌ 未找到门店主数据，无法进行自动计算（请检查 data/store_master.xlsx）！")
-                elif channel == "自定义" and "自定义销售规模" in custom_sub_mode and not selected_custom_types:
-                    st.error("❌ 请至少勾选一种销售规模！")
+                # 移除对销售规模必选的校验，因为现在空代表全选
+                # elif channel == "自定义" and custom_sub_mode == "标签筛选" and not selected_filters.get("销售规模"):
+                #     st.error("❌ 请至少勾选一种销售规模！")
                 else:
                     row_data = {
                         "新品大类": category,
@@ -306,7 +384,7 @@ def main():
                         "底价": cost_price,
                         "退货条件": return_policy
                     }
-                    if channel == "自定义" and "手动输入" in custom_sub_mode:
+                    if channel == "自定义" and custom_sub_mode == "手动输入":
                         for k, v in manual_counts.items():
                             row_data[f"(自定义){k}数"] = v
 
@@ -315,23 +393,25 @@ def main():
                         excluded_count = 0
                         is_auto_calc_mode = False
 
-                        if channel == "自定义" and "手动输入" in custom_sub_mode:
+                        if channel == "自定义" and custom_sub_mode == "手动输入":
                             store_counts = extract_manual_counts(row_data)
                             st.info("💡 自定义(手动)模式：不进行'受限批文'门店剔除，按输入数量计算。")
-                        elif channel == "自定义" and "自定义销售规模" in custom_sub_mode:
+                        elif channel == "自定义" and custom_sub_mode == "标签筛选":
                             is_auto_calc_mode = True
                             store_counts = calc_auto_counts(
                                 store_master_df, 
-                                selected_custom_types, 
+                                channel, # "自定义"
                                 restricted_xp_code=target_xp_code,
-                                war_zone=selected_war_zone
+                                war_zone=selected_war_zone,
+                                filters=selected_filters
                             )
                             if target_xp_code:
                                 raw_counts = calc_auto_counts(
                                     store_master_df, 
-                                    selected_custom_types, 
+                                    channel, 
                                     restricted_xp_code=None,
-                                    war_zone=selected_war_zone
+                                    war_zone=selected_war_zone,
+                                    filters=selected_filters
                                 )
                                 excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
                         else:
