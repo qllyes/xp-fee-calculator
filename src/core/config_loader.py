@@ -1,4 +1,3 @@
-
 import pandas as pd
 import os
 from src.core.file_utils import read_excel_safe
@@ -55,52 +54,54 @@ def load_config(config_path="config/coefficients.xlsx"):
     if '底价系数' in xls_dict:
         config['cost_price_coeffs'] = xls_dict['底价系数'].to_dict('records')
 
-    # 6. Return Policy Coeffs
+    # 6. Return Policy Coeffs (Standard Simple Lookup)
+    # 简单的逻辑：直接通过名称查找系数
     if '退货条件系数' in xls_dict:
         df = xls_dict['退货条件系数']
         config['return_policy_coeffs'] = dict(zip(df['退货条件'], df['系数']))
     
-    # 7. Supplier Type Coeffs
+    # [新增] 7. Return Ratio Rules (Advanced Logic)
+    # 用于处理像 "效期可退" 这样需要根据比例分档的复杂逻辑
+    # Excel结构: | 退货条件 | min | max | 系数 |
+    config['return_ratio_rules'] = {}
+    if '退货比例系数' in xls_dict:
+        df_ratio = xls_dict['退货比例系数']
+        # 确保必要的列存在
+        required_cols = ['退货条件', 'min', 'max', '系数']
+        if all(col in df_ratio.columns for col in required_cols):
+             for policy_name, group in df_ratio.groupby('退货条件'):
+                 config['return_ratio_rules'][policy_name] = group[['min', 'max', '系数']].rename(columns={'系数': 'coeff'}).to_dict('records')
+    
+    # 8. Supplier Type Coeffs
     if '供应商类型系数' in xls_dict:
         df = xls_dict['供应商类型系数']
         config['supplier_type_coeffs'] = dict(zip(df['供应商类型'], df['系数']))
 
-    # 8. Min Fee Floors
+    # 9. Min Fee Floors
     if '最低保底费' in xls_dict:
         df = xls_dict['最低保底费']
-        # [修改点]：不再是一对一映射，而是存储完整的行数据或特定字段
-        # 新结构示例: {'中西成药': {'统采': 7500, '地采': 2000}, ...}
         min_fee_floors = {}
         if not df.empty:
             for _, row in df.iterrows():
                 cat = row.get('新品大类')
                 if cat:
                     min_fee_floors[cat] = {
-                        # 容错处理：如果Excel里没这两列，默认为0
                         '统采': row.get('统采保底费', 0),
                         '地采': row.get('地采保底费', 0)
                     }
         config['min_fee_floors'] = min_fee_floors
 
-    # 9. Prescription Categories (New)
-    # 假设 '处方类别' sheet页有一列叫 '处方类别'
+    # 10. Prescription Categories
     if '处方类别' in xls_dict:
         df = xls_dict['处方类别']
         if not df.empty and df.shape[1] > 0:
-            # 默认取第一列作为选项列表
             config['prescription_categories'] = df.iloc[:, 0].dropna().astype(str).tolist()
-        else:
-            config['prescription_categories'] = []
-    else:
-        config['prescription_categories'] = []
-
-    # 10. 提报战区 (New)
+    
+    # 11. War Zones
     if '提报战区' in xls_dict:
         df = xls_dict['提报战区']
         if not df.empty and df.shape[1] > 0:
-            # 默认取第一列作为选项列表
             zones = df.iloc[:, 0].dropna().astype(str).tolist()
-            # 确保 "全集团" 在列表中，且在第一个位置
             if "全集团" in zones:
                 zones.remove("全集团")
             zones.insert(0, "全集团")

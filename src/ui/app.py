@@ -136,6 +136,13 @@ def main():
             overflow-y: auto !important;
         }
         
+        /* 11. 针对动态显示的退货比例输入框增加醒目提醒 */
+        div[data-testid="stNumberInput"]:has(label[data-testid="stWidgetLabel"]:contains("退货比例")) {
+            background-color: #FFF8E1;
+            border-radius: 5px;
+            padding: 2px 5px;
+        }
+        
         </style>
     """, unsafe_allow_html=True)
 
@@ -215,8 +222,29 @@ def main():
                 with c3:
                     sku_count = st.number_input("同一供应商单次引进SKU数", min_value=1, value=1)
                 with c4:
-                    return_policy = st.selectbox("退货条件", list(config["return_policy_coeffs"].keys()))
+                    # [修改点] 获取所有退货条件
+                    all_return_policies = list(config["return_policy_coeffs"].keys()) 
+                    # 将特殊的比例规则条件也合并进去(如果ConfigLoader里没处理好的话)
+                    complex_policies = list(config.get("return_ratio_rules", {}).keys())
+                    all_return_policies = sorted(list(set(all_return_policies + complex_policies)))
                     
+                    return_policy = st.selectbox("退货条件", all_return_policies)
+
+                # [新增] 动态显示退货比例输入框
+                return_ratio_val = 0.0
+                if return_policy in config.get("return_ratio_rules", {}):
+                    c4_sub = st.columns([1]) # 使用整行或者继续分列
+                    with c4_sub[0]:
+                        st.info(f"💡 检测到【{return_policy}】，请输入具体退货比例以确定系数档位。")
+                        return_ratio_val = st.number_input(
+                            "退货比例(%)", 
+                            min_value=0.0, 
+                            max_value=100.0, 
+                            value=2.0,
+                            step=0.1,
+                            help="用于判断退货条件系数的档位"
+                        )
+
                 c5, c6 = st.columns(2)
                 with c5:
                     cost_price = st.number_input("底价 (元)", min_value=0.0, value=10.0)
@@ -226,12 +254,10 @@ def main():
                 with c7:
                     payment = st.selectbox("付款方式", list(config["payment_coeffs"].keys()))
                 with c8:
-                    # [优化] 处方类别严格以映射表(xp_map)为准，确保能获取到 target_xp_code
                     if xp_map:
                         xp_options = sorted(list(xp_map.keys()))
                     else:
                         xp_options = ["无 (未找到映射表)"]
-                        
                     selected_xp_category = st.selectbox("处方类别", xp_options)
 
                 target_xp_code = xp_map.get(selected_xp_category) if xp_map else None
@@ -292,58 +318,37 @@ def main():
                         with col_inputs[4]: manual_counts["小店"] = st.number_input("小店", min_value=0, key="custom_small")
                         with col_inputs[5]: manual_counts["成长店"] = st.number_input("成长店", min_value=0, key="custom_grow")
                     else:
-                        # --- 标签筛选模式 ---
                         st.caption("请选择筛选条件 (为空表示全选)")
-                        
                         filter_df = region_map_df if region_map_df is not None else store_master_df
-
                         if filter_df is not None:
-                            # 1. 区域维度 (多选) - 级联筛选逻辑
                             with st.expander("选择省公司/省份/城市", expanded=True):
                                 col_reg1, col_reg2, col_reg3 = st.columns(3)
-                                
                                 if "filter_company" not in st.session_state: st.session_state["filter_company"] = []
                                 if "filter_province" not in st.session_state: st.session_state["filter_province"] = []
                                 if "filter_city" not in st.session_state: st.session_state["filter_city"] = []
-
                                 sel_company = st.session_state["filter_company"]
                                 sel_province = st.session_state["filter_province"]
                                 sel_city = st.session_state["filter_city"]
-
                                 def get_mask(col_name, selected_values):
-                                    if not selected_values:
-                                        return pd.Series(True, index=filter_df.index)
+                                    if not selected_values: return pd.Series(True, index=filter_df.index)
                                     return filter_df[col_name].isin(selected_values)
-
                                 mask_company_cond = get_mask("省公司", sel_company)
                                 mask_province_cond = get_mask("省份", sel_province)
                                 mask_city_cond = get_mask("城市", sel_city)
-
                                 opts_company = sorted(filter_df[mask_province_cond & mask_city_cond]["省公司"].dropna().unique())
                                 opts_province = sorted(filter_df[mask_company_cond & mask_city_cond]["省份"].dropna().unique())
                                 opts_city = sorted(filter_df[mask_company_cond & mask_province_cond]["城市"].dropna().unique())
-
-                                def sanitize(current, valid):
-                                    return [x for x in current if x in valid]
-
+                                def sanitize(current, valid): return [x for x in current if x in valid]
                                 st.session_state["filter_company"] = sanitize(st.session_state["filter_company"], opts_company)
                                 st.session_state["filter_province"] = sanitize(st.session_state["filter_province"], opts_province)
                                 st.session_state["filter_city"] = sanitize(st.session_state["filter_city"], opts_city)
-
-                                with col_reg1:
-                                    selected_filters["省公司"] = st.multiselect("省公司", options=opts_company, key="filter_company", placeholder="全部 (默认)")
-                                with col_reg2:
-                                    selected_filters["省份"] = st.multiselect("省份", options=opts_province, key="filter_province", placeholder="全部 (默认)")
-                                with col_reg3:
-                                    selected_filters["城市"] = st.multiselect("城市", options=opts_city, key="filter_city", placeholder="全部 (默认)")
+                                with col_reg1: selected_filters["省公司"] = st.multiselect("省公司", options=opts_company, key="filter_company", placeholder="全部 (默认)")
+                                with col_reg2: selected_filters["省份"] = st.multiselect("省份", options=opts_province, key="filter_province", placeholder="全部 (默认)")
+                                with col_reg3: selected_filters["城市"] = st.multiselect("城市", options=opts_city, key="filter_city", placeholder="全部 (默认)")
                             
-                            # 2. 门店属性
                             with st.expander("门店属性筛选", expanded=True):
-                                # Row 1: 销售规模
                                 sales_scale_opts = dim_metadata["销售规模"] if dim_metadata else ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
                                 selected_filters["销售规模"] = st.multiselect("销售规模", sales_scale_opts, default=[], placeholder="全部 (默认)")
-
-                                # Row 2: 店龄店型 & 客流商圈
                                 col_attr1, col_attr2 = st.columns(2)
                                 with col_attr1:
                                     opts = dim_metadata["店龄店型"] if dim_metadata else []
@@ -351,8 +356,6 @@ def main():
                                 with col_attr2:
                                     opts = dim_metadata["客流商圈"] if dim_metadata else []
                                     selected_filters["客流商圈"] = st.multiselect("客流商圈", opts, placeholder="全部 (默认)")
-                                
-                                # Row 3: 行政区划 & 公域O2O
                                 col_attr3, col_attr4 = st.columns(2)
                                 with col_attr3:
                                     opts = dim_metadata["行政区划等级"] if dim_metadata else []
@@ -360,22 +363,14 @@ def main():
                                 with col_attr4:
                                     opts = dim_metadata["公域O2O店型"] if dim_metadata else []
                                     selected_filters["公域O2O店型"] = st.multiselect("公域O2O店型", opts, placeholder="全部 (默认)")
-
-                                # Row 4: 业务属性
                                 st.markdown("---")
                                 col_bool1, col_bool2, col_bool3 = st.columns(3)
-                                
-                                # 动态构建选项，确保“全部”永远在第一位
                                 insurance_opts = ["全部"] + (dim_metadata.get("是否医保店", ["是", "否"]) if dim_metadata else ["是", "否"])
                                 o2o_opts = ["全部"] + (dim_metadata.get("是否O2O门店", ["是", "否"]) if dim_metadata else ["是", "否"])
                                 coor_opts = ["全部"] + (dim_metadata.get("是否统筹店", ["是", "否"]) if dim_metadata else ["是", "否"])
-                                
-                                with col_bool1:
-                                    selected_filters["是否医保店"] = st.selectbox("是否医保店", insurance_opts)
-                                with col_bool2:
-                                    selected_filters["是否O2O门店"] = st.selectbox("是否O2O门店", o2o_opts)
-                                with col_bool3:
-                                    selected_filters["是否统筹店"] = st.selectbox("是否统筹店", coor_opts)
+                                with col_bool1: selected_filters["是否医保店"] = st.selectbox("是否医保店", insurance_opts)
+                                with col_bool2: selected_filters["是否O2O门店"] = st.selectbox("是否O2O门店", o2o_opts)
+                                with col_bool3: selected_filters["是否统筹店"] = st.selectbox("是否统筹店", coor_opts)
 
                 st.markdown("""
                             <div style="
@@ -408,7 +403,8 @@ def main():
                         "付款方式": payment,
                         "供应商类型": supplier_type,
                         "底价": cost_price,
-                        "退货条件": return_policy
+                        "退货条件": return_policy,
+                        "退货比例(%)": return_ratio_val # [新增] 传入比例
                     }
                     if channel == "自定义" and custom_sub_mode == "手动输入":
                         for k, v in manual_counts.items():
@@ -460,61 +456,25 @@ def main():
 
                         with st.container(border=True):
                             st.markdown("<div style='font-size: 18px; font-weight: bold; margin-bottom: 10px;'>🧾 通道计算器 -- 输出信息</div>", unsafe_allow_html=True)
-                            
                             css_style = """
                             <style>
-                                .metric-box {
-                                    display: flex;
-                                    flex-direction: column;
-                                    align-items: center;
-                                    justify-content: center;
-                                    padding: 10px;
-                                }
-                                .metric-label {
-                                    font-size: 0.9rem;
-                                    color: #666;
-                                    margin-bottom: 5px;
-                                }
-                                .metric-value {
-                                    font-size: 1.8rem;
-                                    font-weight: 700;
-                                }
+                                .metric-box { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; }
+                                .metric-label { font-size: 0.9rem; color: #666; margin-bottom: 5px; }
+                                .metric-value { font-size: 1.8rem; font-weight: 700; }
                             </style>
                             """
                             st.markdown(css_style, unsafe_allow_html=True)
-
                             col_res1, col_res2, col_res3 = st.columns([1, 1, 1.2]) 
-                            
                             with col_res1:
-                                st.markdown(f"""
-                                <div class="metric-box">
-                                    <div class="metric-label">理论总新品铺货费(元)</div>
-                                    <div class="metric-value" style="color: #333;">{int(result['theoretical_fee']):,}</div>
-                                </div>
-                                """, unsafe_allow_html=True)
-                                
+                                st.markdown(f"""<div class="metric-box"><div class="metric-label">理论总新品铺货费(元)</div><div class="metric-value" style="color: #333;">{int(result['theoretical_fee']):,}</div></div>""", unsafe_allow_html=True)
                             with col_res2:
-                                st.markdown(f"""
-                                <div class="metric-box">
-                                    <div class="metric-label">折扣</div>
-                                    <div class="metric-value" style="color: #333;">{result['discount_factor']:.2f}</div>
-                                </div>
-                                """, unsafe_allow_html=True)
-                                
+                                st.markdown(f"""<div class="metric-box"><div class="metric-label">折扣</div><div class="metric-value" style="color: #333;">{result['discount_factor']:.2f}</div></div>""", unsafe_allow_html=True)
                             with col_res3:
-                                st.markdown(f"""
-                                <div class="metric-box">
-                                    <div class="metric-label">折后总新品铺货费(元)</div>
-                                    <div class="metric-value" style="color: #D32F2F; ">{int(result['final_fee']):,}</div>
-                                </div>
-                                """, unsafe_allow_html=True)
-
+                                st.markdown(f"""<div class="metric-box"><div class="metric-label">折后总新品铺货费(元)</div><div class="metric-value" style="color: #D32F2F; ">{int(result['final_fee']):,}</div></div>""", unsafe_allow_html=True)
                             if result.get('is_floor_triggered'):
                                 procurement = result.get('procurement_type', '未知标准')
                                 st.caption(f"⚠️ 已触发最低兜底费用 ({procurement}): {result['min_floor']}元")
-
                             st.divider()
-
                             with st.expander("👁️ 查看计算过程详情", expanded=False):
                                 col_detail_2, col_detail_1 = st.columns(2)
                                 with col_detail_1:
@@ -524,18 +484,15 @@ def main():
                                         "系数": [val for _, val in result['coefficients']]
                                     }
                                     st.dataframe(pd.DataFrame(coeffs_data), use_container_width=True, hide_index=True)
-
                                 with col_detail_2:
                                     st.markdown("🏬 门店分布")
                                     store_order = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
                                     store_data = {"销售规模": store_order, "门店数": [result['store_details'].get(t, 0) for t in store_order]}
                                     st.dataframe(pd.DataFrame(store_data), use_container_width=True, hide_index=True)
-
                                 total_stores = sum(result['store_details'].values())
                                 footer_text = f"计算池中的门店数量: {total_stores:,}"
                                 if is_auto_calc_mode and target_xp_code: footer_text += f" | 剔除受限门店数: {excluded_count}"
                                 st.caption(footer_text)
-
                         with st.expander("规则说明"):
                             rule_pdf_path = os.path.join(project_root, "data", "rule_description.pdf")
                             if os.path.exists(rule_pdf_path):
@@ -544,14 +501,12 @@ def main():
                                 st.markdown(f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>', unsafe_allow_html=True)
                             else:
                                 st.info("暂无规则说明文档")
-
                     except Exception as e:
                         st.error(f"计算出错: {e}")
 
     # --- Tab 2: 批量计算器 ---
     with tab2:
         st.markdown("<p style='color: gray; font-size: 0.95em; margin-top: -10px; margin-bottom: 20px;'>快速为多款新品一次性计算铺货费用</p>", unsafe_allow_html=True)
-
         with st.expander("📥 需要导入模板？点这里下载", expanded=True):
             template_path = os.path.join(project_root, "data", "batch_template.xlsx")
             if os.path.exists(template_path):
@@ -559,14 +514,10 @@ def main():
                     st.download_button("下载导入模板", f, file_name="新品铺货费_批量导入模板.xlsx", use_container_width=True, type="secondary")
             else:
                 st.warning("未找到模板文件")
-
         st.markdown("---")
         uploaded_batch = st.file_uploader("上传批量Excel文件", type=["xlsx"])
-
-        if "batch_last_file_id" not in st.session_state:
-            st.session_state.batch_last_file_id = None
-        if "batch_results_df" not in st.session_state:
-            st.session_state.batch_results_df = None
+        if "batch_last_file_id" not in st.session_state: st.session_state.batch_last_file_id = None
+        if "batch_results_df" not in st.session_state: st.session_state.batch_results_df = None
 
         if uploaded_batch:
             current_file_id = uploaded_batch.file_id
@@ -580,6 +531,10 @@ def main():
                 else:
                     try:
                         df = read_excel_safe(uploaded_batch)
+                        # [新增] 检查是否存在 '退货比例(%)' 列，如果不存在则警告或默认0
+                        if '退货比例(%)' not in df.columns:
+                            st.warning("⚠️ 提示：上传的Excel中缺少【退货比例(%)】列。如果是效期可退类商品，将默认按 0% 处理。建议下载最新模板。")
+                        
                         with st.spinner("正在批量计算..."):
                             results = []
                             progress_bar = st.progress(0)
@@ -603,8 +558,12 @@ def main():
                                     else:
                                         batch_war_zone = str(batch_war_zone).strip()
 
-                                    excluded_count = 0
+                                    # [新增] 清洗退货比例
+                                    ratio_val = row_dict.get('退货比例(%)', 0)
+                                    if pd.isna(ratio_val): ratio_val = 0
+                                    row_dict['退货比例(%)'] = float(ratio_val)
 
+                                    excluded_count = 0
                                     if channel_name == "自定义":
                                         store_counts = extract_manual_counts(row_dict)
                                     else:
@@ -628,41 +587,33 @@ def main():
                                     row_dict['理论总新品铺货费 (元)'] = int(result['theoretical_fee'])
                                     row_dict['折扣'] = result['discount_factor']
                                     row_dict['折后总新品铺货费 (元)'] = int(result['final_fee'])
-                                    
                                     active_stores = {k: v for k, v in result['store_details'].items() if v > 0}
                                     row_dict['[详情]门店分布'] = str(active_stores)
-                                    
                                     coeffs_dict = {item[0]: item[1] for item in result['coefficients']}
                                     row_dict['[详情]计算系数'] = str(coeffs_dict)
-                                    
                                     if batch_target_code and excluded_count > 0:
                                         row_dict['备注'] = f"已剔除受限门店数：{excluded_count}"
                                     elif batch_target_code:
                                         row_dict['备注'] = "无受限门店剔除"
                                     else:
                                         row_dict['备注'] = ""
-                                        
                                     results.append(row_dict)
                                 except Exception as e:
                                     row_dict['备注'] = f"Error: {e}"
                                     results.append(row_dict)
-                                
                                 progress_bar.progress((index + 1) / len(df))
                             
                             result_df = pd.DataFrame(results)
                             st.success("批量计算完成！")
                             st.session_state.batch_results_df = result_df
-
                     except Exception as e:
                         st.error(f"处理文件失败: {e}")
             
             if st.session_state.batch_results_df is not None:
                 st.dataframe(st.session_state.batch_results_df.head())
-                
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
                     st.session_state.batch_results_df.to_excel(writer, index=False)
-                
                 st.download_button(
                     "导出结果", 
                     output.getvalue(), 
