@@ -136,12 +136,7 @@ def main():
             overflow-y: auto !important;
         }
         
-        /* 11. 针对动态显示的退货比例输入框增加醒目提醒 */
-        div[data-testid="stNumberInput"]:has(label[data-testid="stWidgetLabel"]:contains("退货比例")) {
-            background-color: #FFF8E1;
-            border-radius: 5px;
-            padding: 2px 5px;
-        }
+        /* [已移除] 之前针对动态显示的退货比例输入框的黄色背景样式 */
         
         </style>
     """, unsafe_allow_html=True)
@@ -218,32 +213,46 @@ def main():
                 with c2:
                     supplier_type = st.selectbox("供应商类型", list(config["supplier_type_coeffs"].keys()))
 
-                c3, c4 = st.columns(2)
+                # --- 动态布局逻辑开始 ---
+                # 1. 准备选项
+                all_return_policies = list(config["return_policy_coeffs"].keys()) 
+                complex_policies = list(config.get("return_ratio_rules", {}).keys())
+                all_return_policies = sorted(list(set(all_return_policies + complex_policies)))
+                
+                # 2. 预判布局：检查 session_state 或使用默认值
+                # 如果这是第一次渲染，st.session_state 还没有这个 key，我们取列表第一个作为默认
+                current_policy_val = st.session_state.get("widget_return_policy", all_return_policies[0])
+                is_complex_policy = current_policy_val in complex_policies
+
+                # 3. 动态定义列：如果是复杂条件，这行分3列；否则分2列
+                if is_complex_policy:
+                    # 比例调整：SKU(1) : 退货条件(1.2) : 退货比例(0.8)
+                    c3, c4, c4_extra = st.columns([1, 1.2, 0.8])
+                else:
+                    c3, c4 = st.columns(2)
+                    c4_extra = None
+
                 with c3:
                     sku_count = st.number_input("同一供应商单次引进SKU数", min_value=1, value=1)
+                
                 with c4:
-                    # [修改点] 获取所有退货条件
-                    all_return_policies = list(config["return_policy_coeffs"].keys()) 
-                    # 将特殊的比例规则条件也合并进去(如果ConfigLoader里没处理好的话)
-                    complex_policies = list(config.get("return_ratio_rules", {}).keys())
-                    all_return_policies = sorted(list(set(all_return_policies + complex_policies)))
-                    
-                    return_policy = st.selectbox("退货条件", all_return_policies)
+                    # 注意：必须设置 key，以便在 rerun 时能通过 session_state 获取最新值
+                    return_policy = st.selectbox("退货条件", all_return_policies, key="widget_return_policy")
 
-                # [新增] 动态显示退货比例输入框
                 return_ratio_val = 0.0
-                if return_policy in config.get("return_ratio_rules", {}):
-                    c4_sub = st.columns([1]) # 使用整行或者继续分列
-                    with c4_sub[0]:
-                        st.info(f"💡 检测到【{return_policy}】，请输入具体退货比例以确定系数档位。")
+                if c4_extra:
+                    with c4_extra:
+                        # 更加简洁的 Label，不需要 st.info 干扰
                         return_ratio_val = st.number_input(
-                            "退货比例(%)", 
+                            "退货比例 (%)", 
                             min_value=0.0, 
                             max_value=100.0, 
-                            value=2.0,
+                            value=100.0,
                             step=0.1,
-                            help="用于判断退货条件系数的档位"
+                            # 使用 help 替代 info
+                            help="请输入比例以匹配折扣档位"
                         )
+                # --- 动态布局逻辑结束 ---
 
                 c5, c6 = st.columns(2)
                 with c5:
@@ -533,7 +542,7 @@ def main():
                         df = read_excel_safe(uploaded_batch)
                         # [新增] 检查是否存在 '退货比例(%)' 列，如果不存在则警告或默认0
                         if '退货比例(%)' not in df.columns:
-                            st.warning("⚠️ 提示：上传的Excel中缺少【退货比例(%)】列。如果是效期可退类商品，将默认按 0% 处理。建议下载最新模板。")
+                            st.warning("⚠️ 提示：上传的Excel中缺少【退货比例(%)】列。如果是效期可退类商品，将默认按 100% 处理。建议下载最新模板。")
                         
                         with st.spinner("正在批量计算..."):
                             results = []
@@ -559,7 +568,7 @@ def main():
                                         batch_war_zone = str(batch_war_zone).strip()
 
                                     # [新增] 清洗退货比例
-                                    ratio_val = row_dict.get('退货比例(%)', 0)
+                                    ratio_val = row_dict.get('退货比例(%)', 100)
                                     if pd.isna(ratio_val): ratio_val = 0
                                     row_dict['退货比例(%)'] = float(ratio_val)
 
