@@ -23,25 +23,25 @@ from src.core.file_utils import read_excel_safe
 st.set_page_config(page_title="新品铺货费计算器", page_icon="💰", layout="wide")
 
 # Load Config with Cache
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def get_config(path):
     return load_config(path)
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def get_store_master(path):
     return load_store_master(path)
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def get_xp_mapping(path):
     return load_xp_mapping(path)
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def get_region_map(path):
     if os.path.exists(path):
         return pd.read_excel(path, engine='openpyxl')
     return None
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def get_dim_metadata(path):
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
