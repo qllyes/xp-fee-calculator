@@ -66,11 +66,12 @@ def sync_data():
         data_dir = os.path.join(current_dir, "data")
         os.makedirs(data_dir, exist_ok=True)
         
+        # 表1：门店信息表
         output_path = os.path.join(data_dir, "store_master.xlsx")
         print(f"💾 Saving to {output_path}...")
         df.to_excel(output_path, index=False, engine='openpyxl')
         
-        # 5. Generate Region Map (Unique combinations of Company/Province/City)
+        # 5. 表2：Generate Region Map (Unique combinations of Company/Province/City)
         region_map_path = os.path.join(data_dir, "region_map.xlsx")
         print(f"💾 Generating region map to {region_map_path}...")
         region_df = df[['省公司', '省份', '城市']].dropna().drop_duplicates().sort_values(['省公司', '省份', '城市'])
@@ -80,6 +81,7 @@ def sync_data():
         metadata_path = os.path.join(data_dir, "dim_metadata.json")
         print(f"💾 Generating dimension metadata to {metadata_path}...")
         
+        # 表3：自定义筛选条件字段都存为一个元数据
         metadata = {
             "店龄店型": sorted(df["店龄店型"].dropna().unique().tolist()),
             "行政区划等级": sorted(df["行政区划等级"].dropna().unique().tolist()),
