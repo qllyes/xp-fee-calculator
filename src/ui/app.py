@@ -569,7 +569,7 @@ def main():
 
                                     # [新增] 清洗退货比例
                                     ratio_val = row_dict.get('退货比例(%)', 100)
-                                    if pd.isna(ratio_val): ratio_val = 0
+                                    if pd.isna(ratio_val): ratio_val = 100
                                     row_dict['退货比例(%)'] = float(ratio_val)
 
                                     excluded_count = 0
