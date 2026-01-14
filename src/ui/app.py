@@ -18,6 +18,7 @@ from src.core.config_loader import load_config
 from src.core.store_manager import load_store_master, calc_auto_counts, extract_manual_counts, load_xp_mapping
 from src.core.calculator import calculate_fee
 from src.core.file_utils import read_excel_safe
+from src.core import auth
 
 # Page Config
 st.set_page_config(page_title="新品铺货费计算器", page_icon="💰", layout="wide")
@@ -55,10 +56,138 @@ except Exception as e:
     st.error(f"无法加载配置文件: {e}")
     st.stop()
 
+# 用户配置路径
+USERS_CONFIG_PATH = os.path.join(project_root, "config", "users.json")
+
+
+
+def show_login_page() -> bool:
+    """显示登录页面"""
+    st.markdown("""
+        <style>
+        header[data-testid="stHeader"] { display: none; }
+        footer { display: none; }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 1.2, 1])
+    with col2:
+        st.markdown('<div style="text-align: center; font-size: 2.5rem; margin: 60px 0 12px 0;">💰</div>', unsafe_allow_html=True)
+        st.markdown('<div style="text-align: center; font-size: 1.5rem; font-weight: 600; margin-bottom: 6px;">新品铺货费计算器</div>', unsafe_allow_html=True)
+        st.markdown('<div style="text-align: center; font-size: 0.85rem; color: #666; margin-bottom: 20px;">请登录以继续</div>', unsafe_allow_html=True)
+        
+        with st.container(border=True):
+            username = st.text_input("👤 用户名", placeholder="请输入用户名")
+            password = st.text_input("🔒 密码", type="password", placeholder="请输入密码")
+            
+            if st.button("登 录", type="primary", use_container_width=True):
+                if not username or not password:
+                    st.error("请输入用户名和密码")
+                    return False
+                user = auth.authenticate(USERS_CONFIG_PATH, username, password)
+                if user:
+                    st.session_state["logged_in"] = True
+                    st.session_state["user"] = user
+                    st.rerun()
+                else:
+                    st.error("用户名或密码错误")
+                    return False
+    return False
+
+
+def show_user_management() -> None:
+    """显示用户管理界面"""
+    st.markdown("### ⚙️ 用户管理")
+    if st.button("← 返回主页", type="secondary"):
+        st.session_state["show_user_management"] = False
+        st.rerun()
+    st.divider()
+    
+    col_add, col_list = st.columns([1, 1.5])
+    with col_add:
+        st.markdown("#### 新增用户")
+        with st.form("add_user_form", clear_on_submit=True):
+            new_username = st.text_input("用户名", placeholder="请输入用户名")
+            new_password = st.text_input("密码", type="password", placeholder="请输入密码")
+            new_display_name = st.text_input("显示名称", placeholder="可选")
+            new_role = st.selectbox("角色", ["user", "admin"], format_func=lambda x: "管理员" if x == "admin" else "普通用户")
+            if st.form_submit_button("➕ 添加用户", type="primary", use_container_width=True):
+                if not new_username or not new_password:
+                    st.error("用户名和密码不能为空")
+                else:
+                    success, msg = auth.add_user(USERS_CONFIG_PATH, new_username, new_password, new_role, new_display_name or new_username)
+                    if success:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+    
+    with col_list:
+        st.markdown("#### 用户列表")
+        users = auth.get_all_users(USERS_CONFIG_PATH)
+        if not users:
+            st.info("暂无用户")
+        else:
+            for user in users:
+                col_info, col_action = st.columns([3, 1])
+                with col_info:
+                    role_badge = "🔑" if user["role"] == "admin" else "👤"
+                    st.markdown(f"{role_badge} **{user['display_name']}** (`{user['username']}`)")
+                with col_action:
+                    current_user = st.session_state.get("user", {}).get("username", "")
+                    if user["username"] != current_user:
+                        if st.button("🗑️", key=f"del_{user['username']}", help="删除用户"):
+                            success, msg = auth.delete_user(USERS_CONFIG_PATH, user["username"])
+                            if success:
+                                st.success(msg)
+                                st.rerun()
+                            else:
+                                st.error(msg)
+                    else:
+                        st.caption("(当前)")
+
 def main():
+    # 检查登录状态
+    if not st.session_state.get("logged_in", False):
+        show_login_page()
+        return
+    
+    # 检查是否显示用户管理页面
+    if st.session_state.get("show_user_management", False):
+        show_user_management()
+        return
+    
     # --- 优化后的混合布局 CSS ---
     st.markdown("""
         <style>
+        /* Popover 菜单样式 - 紧凑版 */
+        div[data-testid="stPopoverBody"] {
+            padding: 8px 6px !important;
+            min-width: 120px !important;
+            max-width: 150px !important;
+        }
+
+       div[data-testid="stPopoverBody"] button {
+            background: transparent !important;
+            border: none !important;
+            padding: 2px 10px !important;  /* ← 更小的垂直 padding */
+            margin: -2px 0 !important;     /* ← 使用负 margin 进一步压缩 */
+            font-size: 0.9rem !important;
+            width: 100% !important;
+            text-align: left !important;
+            line-height: 1.1 !important;   /* ← 更紧凑的行高 */
+            min-height: 28px !important;   /* ← 限制最小高度 */
+        }
+
+        div[data-testid="stPopoverBody"] button:hover {
+            background-color: #f0f2f6 !important;
+        }
+
+        /* 减少 Popover 内部垂直间距 */
+        div[data-testid="stPopoverBody"] > div {
+            gap: 0 !important;
+        }
+        
         /* 1. 顶部留白调整 */
         .block-container {
             padding-top: 1.5rem !important;
@@ -135,13 +264,36 @@ def main():
             max-height: 46px !important;
             overflow-y: auto !important;
         }
-        
-        /* [已移除] 之前针对动态显示的退货比例输入框的黄色背景样式 */
-        
+        /* Popover 按钮字体大小 */
+        button[data-testid="baseButton-secondary"] {
+            font-size: 0.85rem !important;
+        }
+
         </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h2 style='text-align: center;'>新品铺货费计算器</h2>", unsafe_allow_html=True)
+    # 标题与用户菜单集成在同一行
+    title_col, user_col = st.columns([7, 1],vertical_alignment="center")
+
+    with title_col:
+        st.markdown("<div style='font-size: 1.8rem; font-weight: 700;'>新品铺货费计算器</div>", unsafe_allow_html=True)
+
+    with user_col:
+        user = st.session_state.get("user", {})
+        display_name = user.get("display_name", "用户")
+        role = user.get("role", "user")
+        role_label = "管理员" if role == "admin" else "用户"
+        
+        with st.popover(f"👤 {display_name}", use_container_width=False):
+            if role == "admin":
+                if st.button("⚙️ 用户管理", use_container_width=True):
+                    st.session_state["show_user_management"] = True
+                    st.rerun()
+            if st.button("🚪 退出登录", use_container_width=True):
+                st.session_state["logged_in"] = False
+                st.session_state["user"] = None
+                st.session_state["show_user_management"] = False
+                st.rerun()
 
     # --- Data Loading (Auto) ---
     store_master_path = os.path.join(project_root, "data", "store_master.xlsx")

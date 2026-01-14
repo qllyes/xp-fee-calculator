@@ -1,0 +1,16 @@
+{
+  "users": [
+    {
+      "username": "admin",
+      "password_hash": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+      "role": "admin",
+      "display_name": "管理员"
+    },
+    {
+      "username": "00113617",
+      "password_hash": "92925488b28ab12584ac8fcaa8a27a0f497b2c62940c8f4fbc8ef19ebc87c43e",
+      "role": "user",
+      "display_name": "00113617"
+    }
+  ]
+}
