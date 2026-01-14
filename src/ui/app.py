@@ -80,8 +80,31 @@ def show_login_page(container_placeholder) -> bool:
     """显示登录页面"""
     # 【核心修复1】将所有登录页内容渲染到传入的容器中
     with container_placeholder.container():
-        # 【优化】移除顶部突兀的 warning，改为卡片内的温馨提示
-        # st.warning("⏳ 首次加载资源需要 5-10 秒，请耐心等待")
+        
+        # 【最终优化】位置移至最顶端
+        # 这就是用户打开页面看到的第一个元素（视觉左上角开始）
+        # 使用全宽度的淡蓝色 Info Banner，既显眼又专业，且一直保持显示
+        st.markdown(
+            """
+            <div style="
+                background-color: #eef4ff; 
+                border: 1px solid #cce5ff; 
+                border-radius: 4px; 
+                padding: 10px 15px; 
+                font-size: 0.9rem; 
+                color: #004085; 
+                margin-bottom: 30px; 
+                display: flex;
+                align-items: center;
+            ">
+                <span style="font-size: 1.2rem; margin-right: 8px;">ℹ️</span>
+                <span>
+                    <b>系统提示</b>：首次加载资源可能需要 5-10 秒，属于正常现象，请耐心等待。
+                </span>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
 
         st.markdown("""
             <style>
@@ -93,32 +116,8 @@ def show_login_page(container_placeholder) -> bool:
         col1, col2, col3 = st.columns([1, 1.2, 1])
         with col2:
             st.markdown('<div style="text-align: center; font-size: 2.5rem; margin: 60px 0 4px 0;">💰</div>', unsafe_allow_html=True)
-            st.markdown('<div style="text-align: center; font-size: 1.5rem; font-weight: 600; margin-bottom: 6px;">新品铺货费计算器</div>', unsafe_allow_html=True)
+            st.markdown('<div style="text-align: center; font-size: 1.5rem; font-weight: 600; margin-bottom: 20px;">新品铺货费计算器</div>', unsafe_allow_html=True)
             
-            # 【优化】删除了 "请登录以继续" 这行冗余文字，使界面更清爽
-            
-            # 【新增】更加自然、即使不消失也不违和的“温馨提示”
-            # 使用灰色背景框，作为对系统特性的客观说明，而非加载中的临时状态
-            st.markdown(
-                """
-                <div style="
-                    background-color: #f8f9fa; 
-                    border: 1px solid #e9ecef; 
-                    border-radius: 6px; 
-                    padding: 8px 12px; 
-                    font-size: 0.8rem; 
-                    color: #6c757d; 
-                    text-align: center; 
-                    margin-bottom: 20px; 
-                    line-height: 1.4;
-                ">
-                    💡 <b>说明</b>：受网络环境影响，首次加载资源可能需要 5-10 秒<br>
-                    如遇长时间白屏，请耐心等待系统初始化
-                </div>
-                """, 
-                unsafe_allow_html=True
-            )
-
             with st.container(border=True):
                 # 从文件加载记住的用户名（持久化）
                 remembered_username = load_remembered_username()
