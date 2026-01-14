@@ -51,6 +51,34 @@ def get_dim_metadata(path):
 
 # 用户配置路径（登录页面需要）
 USERS_CONFIG_PATH = os.path.join(project_root, "config", "users.json")
+REMEMBER_ME_FILE = os.path.join(project_root, "config", ".remember_me")
+
+# 持久化工具函数
+def load_remembered_username():
+    """从文件加载记住的用户名"""
+    try:
+        if os.path.exists(REMEMBER_ME_FILE):
+            with open(REMEMBER_ME_FILE, "r", encoding="utf-8") as f:
+                return f.read().strip()
+    except Exception:
+        pass
+    return ""
+
+def save_remembered_username(username):
+    """保存用户名到文件"""
+    try:
+        with open(REMEMBER_ME_FILE, "w", encoding="utf-8") as f:
+            f.write(username)
+    except Exception:
+        pass
+
+def clear_remembered_username():
+    """清除记住的用户名"""
+    try:
+        if os.path.exists(REMEMBER_ME_FILE):
+            os.remove(REMEMBER_ME_FILE)
+    except Exception:
+        pass
 
 
 
@@ -65,13 +93,13 @@ def show_login_page() -> bool:
     
     col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
-        st.markdown('<div style="text-align: center; font-size: 2.5rem; margin: 60px 0 12px 0;">💰</div>', unsafe_allow_html=True)
+        st.markdown('<div style="text-align: center; font-size: 2.5rem; margin: 60px 0 4px 0;">💰</div>', unsafe_allow_html=True)
         st.markdown('<div style="text-align: center; font-size: 1.5rem; font-weight: 600; margin-bottom: 6px;">新品铺货费计算器</div>', unsafe_allow_html=True)
         st.markdown('<div style="text-align: center; font-size: 0.85rem; color: #666; margin-bottom: 20px;">请登录以继续</div>', unsafe_allow_html=True)
         
         with st.container(border=True):
-            # 自动填充记住的用户名
-            remembered_username = st.session_state.get("remembered_username", "")
+            # 从文件加载记住的用户名（持久化）
+            remembered_username = load_remembered_username()
             username = st.text_input("👤 用户名", value=remembered_username, placeholder="请输入用户名")
             password = st.text_input("🔒 密码", type="password", placeholder="请输入密码")
             
@@ -84,11 +112,11 @@ def show_login_page() -> bool:
                     return False
                 user = auth.authenticate(USERS_CONFIG_PATH, username, password)
                 if user:
-                    # 保存或清除记住的用户名
+                    # 持久化保存或清除记住的用户名
                     if remember_me:
-                        st.session_state["remembered_username"] = username
+                        save_remembered_username(username)
                     else:
-                        st.session_state.pop("remembered_username", None)
+                        clear_remembered_username()
                     
                     st.session_state["logged_in"] = True
                     st.session_state["user"] = user
