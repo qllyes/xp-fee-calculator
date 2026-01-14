@@ -41,7 +41,7 @@ def show_user_management(users_config_path: str) -> None:
         
         /* 行样式 */
         .table-row {
-            padding: 10px 0;
+            padding: 2px 0;
             border-bottom: 1px solid #e5e7eb;
             transition: background-color 0.2s;
         }
@@ -112,11 +112,39 @@ def show_user_management(users_config_path: str) -> None:
             border: 1px solid #a7f3d0;
         }
         
-        /* 调整 Streamlit 列的默认间距 */
+        /* 压缩 Streamlit 列的垂直间距 */
         div[data-testid="column"] {
             display: flex;
             align-items: center;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
         }
+        
+        /* 压缩整体垂直间距 */
+        div[data-testid="stVerticalBlock"] > div {
+            gap: 0.3rem !important;
+        }
+        
+        /* 压缩按钮的所有间距 */
+        .stButton {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        .stButton > button {
+            padding: 0.2rem 0.5rem !important;
+            min-height: 28px !important;
+            height: 28px !important;
+            font-size: 0.8rem !important;
+            margin: 0 !important;
+        }
+        
+        /* 进一步压缩按钮容器 */
+        div[data-testid="column"] > div > div {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
         </style>
     """, unsafe_allow_html=True)
 
@@ -190,8 +218,8 @@ def show_user_management(users_config_path: str) -> None:
                 else:
                      st.markdown('<div class="cell-content" style="justify-content: center; color: #9ca3af;">-</div>', unsafe_allow_html=True)
             
-            # 行分隔线
-            st.markdown('<div style="border-bottom: 1px solid #e5e7eb; margin: 4px 0;"></div>', unsafe_allow_html=True)
+            # 行分隔线（紧凑）
+            st.markdown('<div style="border-bottom: 1px solid #e5e7eb; margin: 1px 0;"></div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     
