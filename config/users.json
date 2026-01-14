@@ -11,6 +11,12 @@
       "password": "123456",
       "role": "user",
       "display_name": "003"
+    },
+    {
+      "username": "test",
+      "password": "123456",
+      "role": "user",
+      "display_name": "test"
     }
   ]
 }

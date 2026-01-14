@@ -41,8 +41,8 @@ def show_user_management(users_config_path: str) -> None:
         
         /* 行样式 */
         .table-row {
-            padding: 2px 0;
-            border-bottom: 1px solid #e5e7eb;
+            padding: 0px 0;
+            border-bottom: 0px solid #e5e7eb;
             transition: background-color 0.2s;
         }
         .table-row:hover {
@@ -216,7 +216,9 @@ def show_user_management(users_config_path: str) -> None:
                         else:
                             st.error(msg)
                 else:
-                     st.markdown('<div class="cell-content" style="justify-content: center; color: #9ca3af;">-</div>', unsafe_allow_html=True)
+                    # 同样使用按钮（禁用），保持行高一致
+                    st.button("当前用户", key=f"cur_{user['username']}_{i}", 
+                             disabled=True, use_container_width=True)
             
             # 行分隔线（紧凑）
             st.markdown('<div style="border-bottom: 1px solid #e5e7eb; margin: 1px 0;"></div>', unsafe_allow_html=True)
