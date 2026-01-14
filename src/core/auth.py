@@ -33,26 +33,43 @@ def save_users(config_path: str, users: List[Dict]) -> None:
 
 
 def authenticate(config_path: str, username: str, password: str) -> Optional[Dict]:
-    """用户认证，返回用户信息（不含密码）或 None"""
+    """用户认证，优先匹配明文密码，兼容旧哈希密码"""
     users = load_users(config_path)
     for user in users:
-        if user["username"] == username and verify_password(password, user["password_hash"]):
-            return {
-                "username": user["username"],
-                "role": user["role"],
-                "display_name": user.get("display_name", username)
-            }
+        if user["username"] == username:
+            # 1. 优先检查明文密码 (新逻辑)
+            if "password" in user and user["password"] == password:
+                return {
+                    "username": user["username"],
+                    "role": user["role"],
+                    "display_name": user.get("display_name", username)
+                }
+            # 2. 兼容检查 password_plain (过渡期逻辑)
+            if "password_plain" in user and user["password_plain"] == password:
+                return {
+                    "username": user["username"],
+                    "role": user["role"],
+                    "display_name": user.get("display_name", username)
+                }
+            # 3. 最后检查哈希密码 (旧逻辑兼容)
+            if "password_hash" in user and verify_password(password, user["password_hash"]):
+                return {
+                    "username": user["username"],
+                    "role": user["role"],
+                    "display_name": user.get("display_name", username)
+                }
     return None
 
 
 def add_user(config_path: str, username: str, password: str, role: str, display_name: str) -> Tuple[bool, str]:
-    """新增用户（管理员功能）"""
+    """新增用户（直接存储明文密码）"""
     users = load_users(config_path)
     if any(u["username"] == username for u in users):
         return False, "用户名已存在"
+    
     users.append({
         "username": username,
-        "password_hash": hash_password(password),
+        "password": password,  # 直接存储明文
         "role": role,
         "display_name": display_name
     })
@@ -72,13 +89,16 @@ def delete_user(config_path: str, username: str) -> Tuple[bool, str]:
 
 
 def get_all_users(config_path: str) -> List[Dict]:
-    """获取所有用户（管理员功能，不含密码）"""
+    """获取所有用户（返回明文密码）"""
     users = load_users(config_path)
-    return [
-        {
+    result = []
+    for u in users:
+        # 获取密码：优先取 password (明文)，如果没有则说明是旧数据
+        pwd = u.get("password", u.get("password_plain", "[旧数据需重置]"))
+        result.append({
             "username": u["username"],
             "role": u["role"],
-            "display_name": u.get("display_name", u["username"])
-        }
-        for u in users
-    ]
+            "display_name": u.get("display_name", u["username"]),
+            "password": pwd
+        })
+    return result

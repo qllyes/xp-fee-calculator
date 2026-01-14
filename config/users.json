@@ -2,21 +2,21 @@
   "users": [
     {
       "username": "admin",
-      "password_hash": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+      "password": "admin123",
       "role": "admin",
       "display_name": "管理员"
     },
     {
-      "username": "00113617",
-      "password_hash": "92925488b28ab12584ac8fcaa8a27a0f497b2c62940c8f4fbc8ef19ebc87c43e",
+      "username": "test001",
+      "password": "testpass123",
       "role": "user",
-      "display_name": "00113617"
+      "display_name": "测试用户001"
     },
     {
-      "username": "test",
-      "password_hash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+      "username": "002",
+      "password": "123456",
       "role": "user",
-      "display_name": "test"
+      "display_name": "002"
     }
   ]
 }

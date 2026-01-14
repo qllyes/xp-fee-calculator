@@ -163,6 +163,11 @@ def show_login_page(container_placeholder) -> bool:
 
 
 def show_user_management() -> None:
+    """显示用户管理界面 - 使用企业级专业表格设计"""
+    from src.ui.user_management import show_user_management as _show_user_mgmt
+    _show_user_mgmt(USERS_CONFIG_PATH)
+
+def _show_user_management_old() -> None:
     """显示用户管理界面 - 列表式布局"""
     # 进入此页面时才导入 auth
     from src.core import auth
