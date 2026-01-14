@@ -1,11 +1,8 @@
 import streamlit as st
-import pandas as pd
-import base64
 import os
 import sys
 import json
-from io import BytesIO
-from datetime import datetime
+# import time  <-- 移除了不需要的时间控制模块
 
 # --- Path Setup ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -14,30 +11,28 @@ project_root = os.path.abspath(os.path.join(current_dir, '..', '..'))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from src.core.config_loader import load_config
-from src.core.store_manager import load_store_master, calc_auto_counts, extract_manual_counts, load_xp_mapping
-from src.core.calculator import calculate_fee
-from src.core.file_utils import read_excel_safe
-from src.core import auth
-
 # Page Config
 st.set_page_config(page_title="新品铺货费计算器", page_icon="💰", layout="wide")
 
 # Load Config with Cache
 @st.cache_data(show_spinner=False)
 def get_config(path):
+    from src.core.config_loader import load_config
     return load_config(path)
 
 @st.cache_data(show_spinner=False)
 def get_store_master(path):
+    from src.core.store_manager import load_store_master
     return load_store_master(path)
 
 @st.cache_data(show_spinner=False)
 def get_xp_mapping(path):
+    from src.core.store_manager import load_xp_mapping
     return load_xp_mapping(path)
 
 @st.cache_data(show_spinner=False)
 def get_region_map(path):
+    import pandas as pd  # 延迟导入
     if os.path.exists(path):
         return pd.read_excel(path, engine='openpyxl')
     return None
@@ -81,54 +76,98 @@ def clear_remembered_username():
         pass
 
 
-
-def show_login_page() -> bool:
+def show_login_page(container_placeholder) -> bool:
     """显示登录页面"""
-    st.markdown("""
-        <style>
-        header[data-testid="stHeader"] { display: none; }
-        footer { display: none; }
-        </style>
-    """, unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 1.2, 1])
-    with col2:
-        st.markdown('<div style="text-align: center; font-size: 2.5rem; margin: 60px 0 4px 0;">💰</div>', unsafe_allow_html=True)
-        st.markdown('<div style="text-align: center; font-size: 1.5rem; font-weight: 600; margin-bottom: 6px;">新品铺货费计算器</div>', unsafe_allow_html=True)
-        st.markdown('<div style="text-align: center; font-size: 0.85rem; color: #666; margin-bottom: 20px;">请登录以继续</div>', unsafe_allow_html=True)
+    # 【核心修复1】将所有登录页内容渲染到传入的容器中
+    with container_placeholder.container():
+        # 【优化】移除顶部突兀的 warning，改为卡片内的温馨提示
+        # st.warning("⏳ 首次加载资源需要 5-10 秒，请耐心等待")
+
+        st.markdown("""
+            <style>
+            header[data-testid="stHeader"] { display: none; }
+            footer { display: none; }
+            </style>
+        """, unsafe_allow_html=True)
         
-        with st.container(border=True):
-            # 从文件加载记住的用户名（持久化）
-            remembered_username = load_remembered_username()
-            username = st.text_input("👤 用户名", value=remembered_username, placeholder="请输入用户名")
-            password = st.text_input("🔒 密码", type="password", placeholder="请输入密码")
+        col1, col2, col3 = st.columns([1, 1.2, 1])
+        with col2:
+            st.markdown('<div style="text-align: center; font-size: 2.5rem; margin: 60px 0 4px 0;">💰</div>', unsafe_allow_html=True)
+            st.markdown('<div style="text-align: center; font-size: 1.5rem; font-weight: 600; margin-bottom: 6px;">新品铺货费计算器</div>', unsafe_allow_html=True)
             
-            # "记住我"选项
-            remember_me = st.checkbox("记住我", value=bool(remembered_username))
+            # 【优化】删除了 "请登录以继续" 这行冗余文字，使界面更清爽
             
-            if st.button("登 录", type="primary", use_container_width=True):
-                if not username or not password:
-                    st.error("请输入用户名和密码")
-                    return False
-                user = auth.authenticate(USERS_CONFIG_PATH, username, password)
-                if user:
-                    # 持久化保存或清除记住的用户名
-                    if remember_me:
-                        save_remembered_username(username)
-                    else:
-                        clear_remembered_username()
-                    
-                    st.session_state["logged_in"] = True
-                    st.session_state["user"] = user
-                    st.rerun()
-                else:
-                    st.error("用户名或密码错误")
-                    return False
+            # 【新增】更加自然、即使不消失也不违和的“温馨提示”
+            # 使用灰色背景框，作为对系统特性的客观说明，而非加载中的临时状态
+            st.markdown(
+                """
+                <div style="
+                    background-color: #f8f9fa; 
+                    border: 1px solid #e9ecef; 
+                    border-radius: 6px; 
+                    padding: 8px 12px; 
+                    font-size: 0.8rem; 
+                    color: #6c757d; 
+                    text-align: center; 
+                    margin-bottom: 20px; 
+                    line-height: 1.4;
+                ">
+                    💡 <b>说明</b>：受网络环境影响，首次加载资源可能需要 5-10 秒<br>
+                    如遇长时间白屏，请耐心等待系统初始化
+                </div>
+                """, 
+                unsafe_allow_html=True
+            )
+
+            with st.container(border=True):
+                # 从文件加载记住的用户名（持久化）
+                remembered_username = load_remembered_username()
+                username = st.text_input("👤 用户名", value=remembered_username, placeholder="请输入用户名")
+                password = st.text_input("🔒 密码", type="password", placeholder="请输入密码")
+                
+                # "记住我"选项
+                remember_me = st.checkbox("记住我", value=bool(remembered_username))
+                
+                if st.button("登 录", type="primary", use_container_width=True):
+                    # 【核心修复2】添加错误捕获
+                    try:
+                        from src.core import auth
+
+                        if not username or not password:
+                            st.error("请输入用户名和密码")
+                            return False
+                        
+                        user = auth.authenticate(USERS_CONFIG_PATH, username, password)
+                        if user:
+                            # 持久化保存或清除记住的用户名
+                            if remember_me:
+                                save_remembered_username(username)
+                            else:
+                                clear_remembered_username()
+                            
+                            st.session_state["logged_in"] = True
+                            st.session_state["user"] = user
+                            
+                            # 登录成功后，显式清空登录页容器
+                            container_placeholder.empty()
+                            
+                            st.rerun()
+                        else:
+                            st.error("用户名或密码错误")
+                            return False
+                    except Exception as e:
+                        st.error(f"登录过程发生错误: {str(e)}")
+                        st.caption("请联系管理员检查配置文件路径或 src/core/auth.py 是否正常")
+                        return False
+            
     return False
 
 
 def show_user_management() -> None:
     """显示用户管理界面 - 列表式布局"""
+    # 进入此页面时才导入 auth
+    from src.core import auth
+
     st.markdown("### ⚙️ 用户管理")
     if st.button("← 返回主页", type="secondary"):
         st.session_state["show_user_management"] = False
@@ -232,10 +271,25 @@ def show_user_management() -> None:
 def main():
     # 检查登录状态
     if not st.session_state.get("logged_in", False):
-        show_login_page()
+        # 【核心修复】创建一个空的容器占位符
+        # 登录页面的所有内容都会渲染在这个容器里
+        login_holder = st.empty()
+        
+        # 将占位符传给登录函数
+        show_login_page(login_holder)
         return
     
     # 登录后加载配置（仅加载一次）
+    # 延迟导入核心库（此时用户已看到界面，加载不会阻塞登录页）
+    # 这里的 import 会在用户成功登录并 rerun 后执行
+    from src.core.store_manager import load_store_master, calc_auto_counts, extract_manual_counts, load_xp_mapping
+    from src.core.calculator import calculate_fee
+    from src.core.file_utils import read_excel_safe
+    import pandas as pd
+    import base64
+    from io import BytesIO
+    # from datetime import datetime # 如果不需要可以不导入
+    
     if "config" not in st.session_state:
         try:
             config_path = os.path.join(project_root, "config", "coefficients.xlsx")
