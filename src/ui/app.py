@@ -49,14 +49,7 @@ def get_dim_metadata(path):
             return json.load(f)
     return None
 
-try:
-    config_path = os.path.join(project_root, "config", "coefficients.xlsx")
-    config = get_config(config_path)
-except Exception as e:
-    st.error(f"无法加载配置文件: {e}")
-    st.stop()
-
-# 用户配置路径
+# 用户配置路径（登录页面需要）
 USERS_CONFIG_PATH = os.path.join(project_root, "config", "users.json")
 
 
@@ -77,8 +70,13 @@ def show_login_page() -> bool:
         st.markdown('<div style="text-align: center; font-size: 0.85rem; color: #666; margin-bottom: 20px;">请登录以继续</div>', unsafe_allow_html=True)
         
         with st.container(border=True):
-            username = st.text_input("👤 用户名", placeholder="请输入用户名")
+            # 自动填充记住的用户名
+            remembered_username = st.session_state.get("remembered_username", "")
+            username = st.text_input("👤 用户名", value=remembered_username, placeholder="请输入用户名")
             password = st.text_input("🔒 密码", type="password", placeholder="请输入密码")
+            
+            # "记住我"选项
+            remember_me = st.checkbox("记住我", value=bool(remembered_username))
             
             if st.button("登 录", type="primary", use_container_width=True):
                 if not username or not password:
@@ -86,6 +84,12 @@ def show_login_page() -> bool:
                     return False
                 user = auth.authenticate(USERS_CONFIG_PATH, username, password)
                 if user:
+                    # 保存或清除记住的用户名
+                    if remember_me:
+                        st.session_state["remembered_username"] = username
+                    else:
+                        st.session_state.pop("remembered_username", None)
+                    
                     st.session_state["logged_in"] = True
                     st.session_state["user"] = user
                     st.rerun()
@@ -96,61 +100,123 @@ def show_login_page() -> bool:
 
 
 def show_user_management() -> None:
-    """显示用户管理界面"""
+    """显示用户管理界面 - 列表式布局"""
     st.markdown("### ⚙️ 用户管理")
     if st.button("← 返回主页", type="secondary"):
         st.session_state["show_user_management"] = False
         st.rerun()
     st.divider()
     
-    col_add, col_list = st.columns([1, 1.5])
-    with col_add:
-        st.markdown("#### 新增用户")
-        with st.form("add_user_form", clear_on_submit=True):
-            new_username = st.text_input("用户名", placeholder="请输入用户名")
-            new_password = st.text_input("密码", type="password", placeholder="请输入密码")
-            new_display_name = st.text_input("显示名称", placeholder="可选")
-            new_role = st.selectbox("角色", ["user", "admin"], format_func=lambda x: "管理员" if x == "admin" else "普通用户")
-            if st.form_submit_button("➕ 添加用户", type="primary", use_container_width=True):
-                if not new_username or not new_password:
-                    st.error("用户名和密码不能为空")
-                else:
-                    success, msg = auth.add_user(USERS_CONFIG_PATH, new_username, new_password, new_role, new_display_name or new_username)
-                    if success:
-                        st.success(msg)
-                        st.rerun()
-                    else:
-                        st.error(msg)
+    # 用户列表 - 表格式展示
+    st.markdown("#### 用户列表")
+    users = auth.get_all_users(USERS_CONFIG_PATH)
     
-    with col_list:
-        st.markdown("#### 用户列表")
-        users = auth.get_all_users(USERS_CONFIG_PATH)
-        if not users:
-            st.info("暂无用户")
-        else:
-            for user in users:
-                col_info, col_action = st.columns([3, 1])
-                with col_info:
-                    role_badge = "🔑" if user["role"] == "admin" else "👤"
-                    st.markdown(f"{role_badge} **{user['display_name']}** (`{user['username']}`)")
-                with col_action:
-                    current_user = st.session_state.get("user", {}).get("username", "")
-                    if user["username"] != current_user:
-                        if st.button("🗑️", key=f"del_{user['username']}", help="删除用户"):
-                            success, msg = auth.delete_user(USERS_CONFIG_PATH, user["username"])
+    if not users:
+        st.info("暂无用户")
+    else:
+        # 表头
+        header_cols = st.columns([0.8, 1.5, 1.2, 1, 0.8])
+        with header_cols[0]:
+            st.markdown("**角色**")
+        with header_cols[1]:
+            st.markdown("**用户名**")
+        with header_cols[2]:
+            st.markdown("**显示名称**")
+        with header_cols[3]:
+            st.markdown("**权限**")
+        with header_cols[4]:
+            st.markdown("**操作**")
+        
+        st.markdown("---")
+        
+        # 用户列表内容
+        current_user = st.session_state.get("user", {}).get("username", "")
+        for user in users:
+            row_cols = st.columns([0.8, 1.5, 1.2, 1, 0.8])
+            
+            with row_cols[0]:
+                role_icon = "🔑" if user["role"] == "admin" else "👤"
+                st.markdown(role_icon)
+            
+            with row_cols[1]:
+                st.markdown(f"`{user['username']}`")
+            
+            with row_cols[2]:
+                st.markdown(user["display_name"])
+            
+            with row_cols[3]:
+                role_label = "管理员" if user["role"] == "admin" else "普通用户"
+                st.markdown(role_label)
+            
+            with row_cols[4]:
+                if user["username"] != current_user:
+                    if st.button("🗑️", key=f"del_{user['username']}", help="删除用户"):
+                        success, msg = auth.delete_user(USERS_CONFIG_PATH, user["username"])
+                        if success:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+                else:
+                    st.caption("当前")
+    
+    st.markdown("---")
+    
+    # 新增用户按钮 - 放在列表下方
+    if st.button("➕ 添加新用户", type="primary", use_container_width=True):
+        st.session_state["show_add_user_form"] = True
+        st.rerun()
+    
+    # 新增用户表单（弹出式）
+    if st.session_state.get("show_add_user_form", False):
+        with st.container(border=True):
+            st.markdown("#### 新增用户")
+            with st.form("add_user_form", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                with col1:
+                    new_username = st.text_input("用户名", placeholder="请输入用户名")
+                    new_display_name = st.text_input("显示名称", placeholder="可选，默认同用户名")
+                with col2:
+                    new_password = st.text_input("密码", type="password", placeholder="请输入密码")
+                    new_role = st.selectbox("角色", ["user", "admin"], 
+                                          format_func=lambda x: "管理员" if x == "admin" else "普通用户")
+                
+                btn_col1, btn_col2 = st.columns(2)
+                with btn_col1:
+                    if st.form_submit_button("✅ 确认添加", type="primary", use_container_width=True):
+                        if not new_username or not new_password:
+                            st.error("用户名和密码不能为空")
+                        else:
+                            success, msg = auth.add_user(USERS_CONFIG_PATH, new_username, new_password, 
+                                                        new_role, new_display_name or new_username)
                             if success:
                                 st.success(msg)
+                                st.session_state["show_add_user_form"] = False
                                 st.rerun()
                             else:
                                 st.error(msg)
-                    else:
-                        st.caption("(当前)")
+                with btn_col2:
+                    if st.form_submit_button("❌ 取消", use_container_width=True):
+                        st.session_state["show_add_user_form"] = False
+                        st.rerun()
+
 
 def main():
     # 检查登录状态
     if not st.session_state.get("logged_in", False):
         show_login_page()
         return
+    
+    # 登录后加载配置（仅加载一次）
+    if "config" not in st.session_state:
+        try:
+            config_path = os.path.join(project_root, "config", "coefficients.xlsx")
+            st.session_state["config"] = get_config(config_path)
+        except Exception as e:
+            st.error(f"无法加载配置文件: {e}")
+            st.stop()
+    
+    config = st.session_state["config"]
     
     # 检查是否显示用户管理页面
     if st.session_state.get("show_user_management", False):
