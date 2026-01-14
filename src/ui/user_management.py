@@ -221,7 +221,7 @@ def show_user_management(users_config_path: str) -> None:
                              disabled=True, use_container_width=True)
             
             # 行分隔线（紧凑）
-            st.markdown('<div style="border-bottom: 1px solid #e5e7eb; margin: 1px 0;"></div>', unsafe_allow_html=True)
+            st.markdown('<div style="border-bottom: 0px solid #e5e7eb; margin: 0px 0;"></div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     

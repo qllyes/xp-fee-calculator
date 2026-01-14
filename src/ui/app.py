@@ -49,26 +49,27 @@ USERS_CONFIG_PATH = os.path.join(project_root, "config", "users.json")
 REMEMBER_ME_FILE = os.path.join(project_root, "config", ".remember_me")
 
 # 持久化工具函数
-def load_remembered_username():
-    """从文件加载记住的用户名"""
+def load_remembered_user():
+    """从文件加载记住的用户信息"""
     try:
         if os.path.exists(REMEMBER_ME_FILE):
             with open(REMEMBER_ME_FILE, "r", encoding="utf-8") as f:
-                return f.read().strip()
+                data = json.load(f)
+                return data.get("username", ""), data.get("password", "")
     except Exception:
         pass
-    return ""
+    return "", ""
 
-def save_remembered_username(username):
-    """保存用户名到文件"""
+def save_remembered_user(username, password):
+    """保存用户名和密码到文件"""
     try:
         with open(REMEMBER_ME_FILE, "w", encoding="utf-8") as f:
-            f.write(username)
+            json.dump({"username": username, "password": password}, f, ensure_ascii=False)
     except Exception:
         pass
 
-def clear_remembered_username():
-    """清除记住的用户名"""
+def clear_remembered_user():
+    """清除记住的用户信息"""
     try:
         if os.path.exists(REMEMBER_ME_FILE):
             os.remove(REMEMBER_ME_FILE)
@@ -119,13 +120,13 @@ def show_login_page(container_placeholder) -> bool:
             st.markdown('<div style="text-align: center; font-size: 1.5rem; font-weight: 600; margin-bottom: 20px;">新品铺货费计算器</div>', unsafe_allow_html=True)
             
             with st.container(border=True):
-                # 从文件加载记住的用户名（持久化）
-                remembered_username = load_remembered_username()
-                username = st.text_input("👤 用户名", value=remembered_username, placeholder="请输入用户名")
-                password = st.text_input("🔒 密码", type="password", placeholder="请输入密码")
+                # 从文件加载记住的用户信息（持久化）
+                rem_username, rem_password = load_remembered_user()
+                username = st.text_input("👤 用户名", value=rem_username, placeholder="请输入用户名")
+                password = st.text_input("🔒 密码", value=rem_password, type="password", placeholder="请输入密码")
                 
                 # "记住我"选项
-                remember_me = st.checkbox("记住我", value=bool(remembered_username))
+                remember_me = st.checkbox("记住我", value=bool(rem_username))
                 
                 if st.button("登 录", type="primary", use_container_width=True):
                     # 【核心修复2】添加错误捕获
@@ -138,11 +139,11 @@ def show_login_page(container_placeholder) -> bool:
                         
                         user = auth.authenticate(USERS_CONFIG_PATH, username, password)
                         if user:
-                            # 持久化保存或清除记住的用户名
+                            # 持久化保存或清除记住的用户信息
                             if remember_me:
-                                save_remembered_username(username)
+                                save_remembered_user(username, password)
                             else:
-                                clear_remembered_username()
+                                clear_remembered_user()
                             
                             st.session_state["logged_in"] = True
                             st.session_state["user"] = user

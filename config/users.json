@@ -7,12 +7,6 @@
       "display_name": "管理员"
     },
     {
-      "username": "003",
-      "password": "123456",
-      "role": "user",
-      "display_name": "003"
-    },
-    {
       "username": "test",
       "password": "123456",
       "role": "user",
