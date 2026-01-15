@@ -430,7 +430,7 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    # 标题与用户菜单集成在同一行
+    # 标题与用户菜单集成在同一行,标题占9份,用户菜单占1份
     title_col, user_col = st.columns([9, 1],vertical_alignment="center")
 
     with title_col:
