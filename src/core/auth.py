@@ -62,14 +62,16 @@ def authenticate(config_path: str, username: str, password: str) -> Optional[Dic
 
 
 def add_user(config_path: str, username: str, password: str, role: str, display_name: str) -> Tuple[bool, str]:
-    """新增用户（直接存储明文密码）"""
+    """新增用户（直接存储明文密码，插入到列表第二行）"""
     users = load_users(config_path)
     if any(u["username"] == username for u in users):
         return False, "用户名已存在"
     
-    users.append({
+    # 插入到列表第二行（索引为1）
+    # 如果列表为空，insert(1) 相当于 append，也是正确的
+    users.insert(1, {
         "username": username,
-        "password": password,  # 直接存储明文
+        "password": password,
         "role": role,
         "display_name": display_name
     })
