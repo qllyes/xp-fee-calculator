@@ -431,7 +431,7 @@ def main():
     """, unsafe_allow_html=True)
 
     # 标题与用户菜单集成在同一行
-    title_col, user_col = st.columns([7, 1],vertical_alignment="center")
+    title_col, user_col = st.columns([9, 1],vertical_alignment="center")
 
     with title_col:
         st.markdown("<div style='font-size: 1.8rem; font-weight: 700;'>新品铺货费计算器</div>", unsafe_allow_html=True)
