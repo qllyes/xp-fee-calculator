@@ -305,6 +305,11 @@ def main():
     
     config = st.session_state["config"]
     
+    # 获取当前用户角色
+    user = st.session_state.get("user", {})
+    user_role = user.get("role", "user")
+    is_admin = (user_role == "admin")
+    
     # 检查是否显示用户管理页面
     if st.session_state.get("show_user_management", False):
         show_user_management()
@@ -789,32 +794,38 @@ def main():
                                 procurement = result.get('procurement_type', '未知标准')
                                 st.caption(f"⚠️ 已触发最低兜底费用 ({procurement}): {result['min_floor']}元")
                             st.divider()
-                            with st.expander("👁️ 查看计算过程详情", expanded=False):
-                                col_detail_2, col_detail_1 = st.columns(2)
-                                with col_detail_1:
-                                    st.markdown("📉 计算系数")
-                                    coeffs_data = {
-                                        "项目": [name for name, _ in result['coefficients']],
-                                        "系数": [val for _, val in result['coefficients']]
-                                    }
-                                    st.dataframe(pd.DataFrame(coeffs_data), use_container_width=True, hide_index=True)
-                                with col_detail_2:
-                                    st.markdown("🏬 门店分布")
-                                    store_order = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
-                                    store_data = {"销售规模": store_order, "门店数": [result['store_details'].get(t, 0) for t in store_order]}
-                                    st.dataframe(pd.DataFrame(store_data), use_container_width=True, hide_index=True)
-                                total_stores = sum(result['store_details'].values())
-                                footer_text = f"计算池中的门店数量: {total_stores:,}"
-                                if is_auto_calc_mode and target_xp_code: footer_text += f" | 剔除受限门店数: {excluded_count}"
-                                st.caption(footer_text)
-                        with st.expander("规则说明"):
-                            rule_pdf_path = os.path.join(project_root, "data", "rule_description.pdf")
-                            if os.path.exists(rule_pdf_path):
-                                with open(rule_pdf_path, "rb") as f:
-                                    base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-                                st.markdown(f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>', unsafe_allow_html=True)
-                            else:
-                                st.info("暂无规则说明文档")
+                            
+                            # 仅管理员可见：计算过程详情
+                            if is_admin:
+                                with st.expander("👁️ 查看计算过程详情", expanded=False):
+                                    col_detail_2, col_detail_1 = st.columns(2)
+                                    with col_detail_1:
+                                        st.markdown("📉 计算系数")
+                                        coeffs_data = {
+                                            "项目": [name for name, _ in result['coefficients']],
+                                            "系数": [val for _, val in result['coefficients']]
+                                        }
+                                        st.dataframe(pd.DataFrame(coeffs_data), use_container_width=True, hide_index=True)
+                                    with col_detail_2:
+                                        st.markdown("🏬 门店分布")
+                                        store_order = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
+                                        store_data = {"销售规模": store_order, "门店数": [result['store_details'].get(t, 0) for t in store_order]}
+                                        st.dataframe(pd.DataFrame(store_data), use_container_width=True, hide_index=True)
+                                    total_stores = sum(result['store_details'].values())
+                                    footer_text = f"计算池中的门店数量: {total_stores:,}"
+                                    if is_auto_calc_mode and target_xp_code: footer_text += f" | 剔除受限门店数: {excluded_count}"
+                                    st.caption(footer_text)
+                            
+                            # 仅管理员可见：规则说明
+                            if is_admin:
+                                with st.expander("规则说明"):
+                                    rule_pdf_path = os.path.join(project_root, "data", "rule_description.pdf")
+                                    if os.path.exists(rule_pdf_path):
+                                        with open(rule_pdf_path, "rb") as f:
+                                            base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+                                        st.markdown(f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>', unsafe_allow_html=True)
+                                    else:
+                                        st.info("暂无规则说明文档")
                     except Exception as e:
                         st.error(f"计算出错: {e}")
 
@@ -924,10 +935,22 @@ def main():
                         st.error(f"处理文件失败: {e}")
             
             if st.session_state.batch_results_df is not None:
-                st.dataframe(st.session_state.batch_results_df.head())
+                display_df = st.session_state.batch_results_df
+                
+                # 准备导出数据：普通用户排除详情字段
+                export_df = display_df.copy()
+                if not is_admin:
+                    # 排除最后三个详情字段
+                    columns_to_exclude = ['[详情]门店分布', '[详情]计算系数', '备注']
+                    export_df = export_df.drop(columns=[col for col in columns_to_exclude if col in export_df.columns])
+                
+                # 显示预览（根据角色过滤）
+                st.dataframe(export_df.head())
+                
+                # 导出（根据角色过滤）
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    st.session_state.batch_results_df.to_excel(writer, index=False)
+                    export_df.to_excel(writer, index=False)
                 st.download_button(
                     "导出结果", 
                     output.getvalue(), 
