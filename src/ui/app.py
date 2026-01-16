@@ -1,7 +1,6 @@
 import streamlit as st
 import os
 import sys
-import json
 
 # --- Path Setup ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -38,262 +37,18 @@ def get_region_map(path):
 
 @st.cache_data(show_spinner=False)
 def get_dim_metadata(path):
+    import json
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     return None
 
-# 用户配置路径（登录页面需要）
-USERS_CONFIG_PATH = os.path.join(project_root, "config", "users.json")
-REMEMBER_ME_FILE = os.path.join(project_root, "config", ".remember_me")
-
-# 持久化工具函数
-def load_remembered_user():
-    """从文件加载记住的用户信息"""
-    try:
-        if os.path.exists(REMEMBER_ME_FILE):
-            with open(REMEMBER_ME_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return data.get("username", ""), data.get("password", "")
-    except Exception:
-        pass
-    return "", ""
-
-def save_remembered_user(username, password):
-    """保存用户名和密码到文件"""
-    try:
-        with open(REMEMBER_ME_FILE, "w", encoding="utf-8") as f:
-            json.dump({"username": username, "password": password}, f, ensure_ascii=False)
-    except Exception:
-        pass
-
-def clear_remembered_user():
-    """清除记住的用户信息"""
-    try:
-        if os.path.exists(REMEMBER_ME_FILE):
-            os.remove(REMEMBER_ME_FILE)
-    except Exception:
-        pass
-
-
-def show_login_page(container_placeholder) -> bool:
-    """显示登录页面"""
-    # 【核心修复1】将所有登录页内容渲染到传入的容器中
-    with container_placeholder.container():
-        
-        # 【最终优化】位置移至最顶端
-        # 这就是用户打开页面看到的第一个元素（视觉左上角开始）
-        # 使用全宽度的淡蓝色 Info Banner，既显眼又专业，且一直保持显示
-        st.markdown(
-            """
-            <div style="
-                background-color: #eef4ff; 
-                border: 1px solid #cce5ff; 
-                border-radius: 4px; 
-                padding: 10px 15px; 
-                font-size: 0.9rem; 
-                color: #004085; 
-                margin-bottom: 30px; 
-                display: flex;
-                align-items: center;
-            ">
-                <span style="font-size: 1.2rem; margin-right: 8px;">ℹ️</span>
-                <span>
-                    <b>系统提示</b>：首次加载资源可能需要 5-10 秒，属于正常现象，请耐心等待。
-                </span>
-            </div>
-            """, 
-            unsafe_allow_html=True
-        )
-
-        st.markdown("""
-            <style>
-            header[data-testid="stHeader"] { display: none; }
-            footer { display: none; }
-            </style>
-        """, unsafe_allow_html=True)
-        
-        col1, col2, col3 = st.columns([1, 1.2, 1])
-        with col2:
-            st.markdown('<div style="text-align: center; font-size: 2.5rem; margin: 60px 0 4px 0;">💰</div>', unsafe_allow_html=True)
-            st.markdown('<div style="text-align: center; font-size: 1.5rem; font-weight: 600; margin-bottom: 20px;">新品铺货费计算器</div>', unsafe_allow_html=True)
-            
-            with st.container(border=True):
-                # 从文件加载记住的用户信息（持久化）
-                rem_username, rem_password = load_remembered_user()
-                username = st.text_input("👤 用户名", value=rem_username, placeholder="请输入用户名")
-                password = st.text_input("🔒 密码", value=rem_password, type="password", placeholder="请输入密码")
-                
-                # "记住我"选项
-                remember_me = st.checkbox("记住我", value=bool(rem_username))
-                
-                if st.button("登 录", type="primary", use_container_width=True):
-                    # 【核心修复2】添加错误捕获
-                    try:
-                        from src.core import auth
-
-                        if not username or not password:
-                            st.error("请输入用户名和密码")
-                            return False
-                        
-                        user = auth.authenticate(USERS_CONFIG_PATH, username, password)
-                        if user:
-                            # 持久化保存或清除记住的用户信息
-                            if remember_me:
-                                save_remembered_user(username, password)
-                            else:
-                                clear_remembered_user()
-                            
-                            st.session_state["logged_in"] = True
-                            st.session_state["user"] = user
-                            
-                            # 登录成功后，显式清空登录页容器
-                            container_placeholder.empty()
-                            
-                            st.rerun()
-                        else:
-                            st.error("用户名或密码错误")
-                            return False
-                    except Exception as e:
-                        st.error(f"登录过程发生错误: {str(e)}")
-                        st.caption("请联系管理员检查配置文件路径或 src/core/auth.py 是否正常")
-                        return False
-            
-    return False
-
-
-def show_user_management() -> None:
-    """显示用户管理界面 - 使用企业级专业表格设计"""
-    from src.ui.user_management import show_user_management as _show_user_mgmt
-    _show_user_mgmt(USERS_CONFIG_PATH)
-
-def _show_user_management_old() -> None:
-    """显示用户管理界面 - 列表式布局"""
-    # 进入此页面时才导入 auth
-    from src.core import auth
-
-    st.markdown("### ⚙️ 用户管理")
-    if st.button("← 返回主页", type="secondary"):
-        st.session_state["show_user_management"] = False
-        st.rerun()
-    st.divider()
-    
-    # 用户列表 - 表格式展示
-    st.markdown("#### 用户列表")
-    users = auth.get_all_users(USERS_CONFIG_PATH)
-    
-    if not users:
-        st.info("暂无用户")
-    else:
-        # 表头
-        header_cols = st.columns([0.8, 1.5, 1.2, 1, 0.8])
-        with header_cols[0]:
-            st.markdown("**角色**")
-        with header_cols[1]:
-            st.markdown("**用户名**")
-        with header_cols[2]:
-            st.markdown("**显示名称**")
-        with header_cols[3]:
-            st.markdown("**权限**")
-        with header_cols[4]:
-            st.markdown("**操作**")
-        
-        st.markdown("---")
-        
-        # 用户列表内容
-        current_user = st.session_state.get("user", {}).get("username", "")
-        for user in users:
-            row_cols = st.columns([0.8, 1.5, 1.2, 1, 0.8])
-            
-            with row_cols[0]:
-                role_icon = "🔑" if user["role"] == "admin" else "👤"
-                st.markdown(role_icon)
-            
-            with row_cols[1]:
-                st.markdown(f"`{user['username']}`")
-            
-            with row_cols[2]:
-                st.markdown(user["display_name"])
-            
-            with row_cols[3]:
-                role_label = "管理员" if user["role"] == "admin" else "普通用户"
-                st.markdown(role_label)
-            
-            with row_cols[4]:
-                if user["username"] != current_user:
-                    if st.button("🗑️", key=f"del_{user['username']}", help="删除用户"):
-                        success, msg = auth.delete_user(USERS_CONFIG_PATH, user["username"])
-                        if success:
-                            st.success(msg)
-                            st.rerun()
-                        else:
-                            st.error(msg)
-                else:
-                    st.caption("当前")
-    
-    st.markdown("---")
-    
-    # 新增用户按钮 - 放在列表下方
-    if st.button("➕ 添加新用户", type="primary", use_container_width=True):
-        st.session_state["show_add_user_form"] = True
-        st.rerun()
-    
-    # 新增用户表单（弹出式）
-    if st.session_state.get("show_add_user_form", False):
-        with st.container(border=True):
-            st.markdown("#### 新增用户")
-            with st.form("add_user_form", clear_on_submit=True):
-                col1, col2 = st.columns(2)
-                with col1:
-                    new_username = st.text_input("用户名", placeholder="请输入用户名")
-                    new_display_name = st.text_input("显示名称", placeholder="可选，默认同用户名")
-                with col2:
-                    new_password = st.text_input("密码", type="password", placeholder="请输入密码")
-                    new_role = st.selectbox("角色", ["user", "admin"], 
-                                          format_func=lambda x: "管理员" if x == "admin" else "普通用户")
-                
-                btn_col1, btn_col2 = st.columns(2)
-                with btn_col1:
-                    if st.form_submit_button("✅ 确认添加", type="primary", use_container_width=True):
-                        if not new_username or not new_password:
-                            st.error("用户名和密码不能为空")
-                        else:
-                            success, msg = auth.add_user(USERS_CONFIG_PATH, new_username, new_password, 
-                                                        new_role, new_display_name or new_username)
-                            if success:
-                                st.success(msg)
-                                st.session_state["show_add_user_form"] = False
-                                st.rerun()
-                            else:
-                                st.error(msg)
-                with btn_col2:
-                    if st.form_submit_button("❌ 取消", use_container_width=True):
-                        st.session_state["show_add_user_form"] = False
-                        st.rerun()
-
-
 def main():
-    # 检查登录状态
-    if not st.session_state.get("logged_in", False):
-        # 【核心修复】创建一个空的容器占位符
-        # 登录页面的所有内容都会渲染在这个容器里
-        login_holder = st.empty()
-        
-        # 将占位符传给登录函数
-        show_login_page(login_holder)
-        return
-    
-    # 登录后加载配置（仅加载一次）
-    # 延迟导入核心库（此时用户已看到界面，加载不会阻塞登录页）
-    # 这里的 import 会在用户成功登录并 rerun 后执行
-    from src.core.store_manager import load_store_master, calc_auto_counts, extract_manual_counts, load_xp_mapping
+    # 延迟导入核心库
+    from src.core.store_manager import calc_auto_counts, extract_manual_counts
     from src.core.calculator import calculate_fee
-    from src.core.file_utils import read_excel_safe
     import pandas as pd
-    import base64
-    from io import BytesIO
-    # from datetime import datetime # 如果不需要可以不导入
-    
+
     if "config" not in st.session_state:
         try:
             config_path = os.path.join(project_root, "config", "coefficients.xlsx")
@@ -303,16 +58,6 @@ def main():
             st.stop()
     
     config = st.session_state["config"]
-    
-    # 获取当前用户角色
-    user = st.session_state.get("user", {})
-    user_role = user.get("role", "user")
-    is_admin = (user_role == "admin")
-    
-    # 检查是否显示用户管理页面
-    if st.session_state.get("show_user_management", False):
-        show_user_management()
-        return
     
     # --- 优化后的混合布局 CSS ---
     st.markdown("""
@@ -429,28 +174,8 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    # 标题与用户菜单集成在同一行,标题占8份,用户菜单占2份
-    title_col, user_col = st.columns([8.8, 1.2],vertical_alignment="center")
-
-    with title_col:
-        st.markdown("<div style='font-size: 1.8rem; font-weight: 700;'>新品铺货费计算器</div>", unsafe_allow_html=True)
-
-    with user_col:
-        user = st.session_state.get("user", {})
-        display_name = user.get("display_name", "用户")
-        role = user.get("role", "user")
-        role_label = "管理员" if role == "admin" else "用户"
-        
-        with st.popover(f"👤 {display_name}", use_container_width=False):
-            if role == "admin":
-                if st.button("⚙️ 用户管理", use_container_width=True):
-                    st.session_state["show_user_management"] = True
-                    st.rerun()
-            if st.button("🚪 退出登录", use_container_width=True):
-                st.session_state["logged_in"] = False
-                st.session_state["user"] = None
-                st.session_state["show_user_management"] = False
-                st.rerun()
+    # 标题栏
+    st.markdown("<div style='font-size: 1.8rem; font-weight: 700; margin-bottom: 15px;'>新品铺货费计算器</div>", unsafe_allow_html=True)
 
     # --- Data Loading (Auto) ---
     store_master_path = os.path.join(project_root, "data", "store_master.xlsx")
@@ -791,171 +516,73 @@ def main():
                                 st.markdown(f"""<div class="metric-box"><div class="metric-label">折后总新品铺货费(元)</div><div class="metric-value" style="color: #D32F2F; ">{int(result['final_fee']):,}</div></div>""", unsafe_allow_html=True)
                             if result.get('is_floor_triggered'):
                                 procurement = result.get('procurement_type', '未知标准')
-                                st.caption(f"⚠️ 已触发最低兜底费用 ({procurement}): {result['min_floor']}元")
+                                floor_src = result.get('floor_source_desc', '')
+                                msg_suffix = f"({floor_src})" if floor_src else ""
+                                st.caption(f"⚠️ 已触发最低兜底费用 ({procurement}): {result['min_floor']}元 {msg_suffix}")
                             st.divider()
                             
-                            # 仅管理员可见：计算过程详情
-                            if is_admin:
-                                with st.expander("👁️ 查看计算过程详情", expanded=False):
-                                    col_detail_2, col_detail_1 = st.columns(2)
-                                    with col_detail_1:
-                                        st.markdown("📉 计算系数")
-                                        coeffs_data = {
-                                            "项目": [name for name, _ in result['coefficients']],
-                                            "系数": [val for _, val in result['coefficients']]
-                                        }
-                                        st.dataframe(pd.DataFrame(coeffs_data), use_container_width=True, hide_index=True)
-                                    with col_detail_2:
-                                        st.markdown("🏬 门店分布")
-                                        store_order = ["超级旗舰店", "旗舰店", "大店", "中店", "小店", "成长店"]
-                                        store_data = {"销售规模": store_order, "门店数": [result['store_details'].get(t, 0) for t in store_order]}
-                                        st.dataframe(pd.DataFrame(store_data), use_container_width=True, hide_index=True)
-                                    total_stores = sum(result['store_details'].values())
-                                    footer_text = f"计算池中的门店数量: {total_stores:,}"
-                                    if is_auto_calc_mode and target_xp_code: footer_text += f" | 剔除受限门店数: {excluded_count}"
-                                    st.caption(footer_text)
+                            with st.expander("👁️ 查看计算过程详情", expanded=False):
+                                col_detail_2, col_detail_1 = st.columns(2)
+                                
+                                with col_detail_2:
+                                    st.markdown(f"**门店费率计算 (单店)**")
+                                    st.json(result["scale_fees"])
+                                
+                                with col_detail_1:
+                                    st.markdown(f"**基础系数**")
+                                    st.markdown(f"- **新品大类系数**: {result['coeffs']['category_coeff']}")
+                                    st.markdown(f"- **供应商类型系数**: {result['coeffs']['supplier_coeff']}")
+                                    st.markdown(f"- **付款方式系数**: {result['coeffs']['payment_coeff']}")
+                                    st.markdown(f"- **退货条件折扣**: {result['coeffs']['return_policy_discount']}")
+                                    st.markdown(f"**计算公式**")
+                                    st.latex(r"单店费用 = 底价 \times SKUs \times 基础 \times 规模系数")
                             
-                            # 仅管理员可见：规则说明
-                            if is_admin:
-                                with st.expander("规则说明"):
-                                    rule_pdf_path = os.path.join(project_root, "data", "rule_description.pdf")
-                                    if os.path.exists(rule_pdf_path):
-                                        with open(rule_pdf_path, "rb") as f:
-                                            base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-                                        st.markdown(f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>', unsafe_allow_html=True)
-                                    else:
-                                        st.info("暂无规则说明文档")
+                            # 门店分布展示
+                            st.markdown("---")
+                            st.markdown(f"**📊 纳入计算的门店分布** (共 {sum(store_counts.values())} 家)")
+                            
+                            if is_auto_calc_mode and excluded_count > 0:
+                                st.warning(f"⚠️ 注意：根据处方类别 `{selected_xp_category}` (代码: {target_xp_code})，已自动剔除 {excluded_count} 家不具备经营资质的门店。")
+
+                            # 准备饼图数据
+                            pie_data = []
+                            for scale, count in store_counts.items():
+                                if count > 0:
+                                    pie_data.append({"规模": scale, "数量": count})
+                            
+                            if pie_data:
+                                import plotly.express as px
+                                df_pie = pd.DataFrame(pie_data)
+                                color_map = {
+                                    "超级旗舰店": "#B71C1C",
+                                    "旗舰店": "#D32F2F",
+                                    "大店": "#F57C00",
+                                    "中店": "#FFB300",
+                                    "小店": "#7CB342",
+                                    "成长店": "#8D6E63"
+                                }
+                                fig = px.pie(
+                                    df_pie, 
+                                    names='规模', 
+                                    values='数量', 
+                                    hole=0.4,
+                                    color='规模',
+                                    color_discrete_map=color_map
+                                )
+                                fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=250)
+                                st.plotly_chart(fig, use_container_width=True)
+                            else:
+                                st.info("暂无门店数据")
+
                     except Exception as e:
-                        st.error(f"计算出错: {e}")
+                        st.error(f"计算过程发生错误: {str(e)}")
+                        import traceback
+                        st.text(traceback.format_exc())
 
     # --- Tab 2: 批量计算器 ---
     with tab2:
-        st.markdown("<p style='color: gray; font-size: 0.95em; margin-top: -10px; margin-bottom: 20px;'>快速为多款新品一次性计算铺货费用</p>", unsafe_allow_html=True)
-        with st.expander("📥 需要导入模板？点这里下载", expanded=True):
-            template_path = os.path.join(project_root, "data", "batch_template.xlsx")
-            if os.path.exists(template_path):
-                with open(template_path, "rb") as f:
-                    st.download_button("下载导入模板", f, file_name="新品铺货费_批量导入模板.xlsx", use_container_width=True, type="secondary")
-            else:
-                st.warning("未找到模板文件")
-        st.markdown("---")
-        uploaded_batch = st.file_uploader("上传批量Excel文件", type=["xlsx"])
-        if "batch_last_file_id" not in st.session_state: st.session_state.batch_last_file_id = None
-        if "batch_results_df" not in st.session_state: st.session_state.batch_results_df = None
-
-        if uploaded_batch:
-            current_file_id = uploaded_batch.file_id
-            if current_file_id != st.session_state.batch_last_file_id:
-                st.session_state.batch_results_df = None
-                st.session_state.batch_last_file_id = current_file_id
-
-            if st.button("开始批量计算", type="primary", use_container_width=True):
-                if store_master_df is None:
-                    st.error("❌ 未找到门店主数据，请检查 data/store_master.xlsx 文件！")
-                else:
-                    try:
-                        df = read_excel_safe(uploaded_batch)
-                        # [新增] 检查是否存在 '退货比例(%)' 列，如果不存在则警告或默认0
-                        if '退货比例(%)' not in df.columns:
-                            st.warning("⚠️ 提示：上传的Excel中缺少【退货比例(%)】列。如果是效期可退类商品，将默认按 100% 处理。建议下载最新模板。")
-                        
-                        with st.spinner("正在批量计算..."):
-                            results = []
-                            progress_bar = st.progress(0)
-                            
-                            for index, row in df.iterrows():
-                                row_dict = row.to_dict()
-                                try:
-                                    p_type = row_dict.get('统采or地采')
-                                    if pd.isna(p_type) or str(p_type).strip() == "":
-                                        row_dict['统采or地采'] = "统采"
-                                    else:
-                                        row_dict['统采or地采'] = str(p_type).strip()
-
-                                    channel_name = row_dict.get('铺货通道')
-                                    batch_xp_cat = row_dict.get('处方类别')
-                                    batch_target_code = xp_map.get(str(batch_xp_cat).strip()) if (batch_xp_cat and xp_map) else None
-                                    
-                                    batch_war_zone = row_dict.get('提报战区')
-                                    if pd.isna(batch_war_zone) or str(batch_war_zone).strip() == "" or str(batch_war_zone).strip() == "全集团":
-                                        batch_war_zone = "全集团"
-                                    else:
-                                        batch_war_zone = str(batch_war_zone).strip()
-
-                                    # [新增] 清洗退货比例
-                                    ratio_val = row_dict.get('退货比例(%)', 100)
-                                    if pd.isna(ratio_val): ratio_val = 100
-                                    row_dict['退货比例(%)'] = float(ratio_val)
-
-                                    excluded_count = 0
-                                    if channel_name == "自定义":
-                                        store_counts = extract_manual_counts(row_dict)
-                                    else:
-                                        store_counts = calc_auto_counts(
-                                            store_master_df, 
-                                            channel_name, 
-                                            restricted_xp_code=batch_target_code,
-                                            war_zone=batch_war_zone
-                                        )
-                                        if batch_target_code:
-                                            raw_counts = calc_auto_counts(
-                                                store_master_df, 
-                                                channel_name, 
-                                                restricted_xp_code=None,
-                                                war_zone=batch_war_zone
-                                            )
-                                            excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
-                                    
-                                    result = calculate_fee(row_dict, store_counts, config)
-                                    
-                                    row_dict['理论总新品铺货费 (元)'] = int(result['theoretical_fee'])
-                                    row_dict['折扣'] = result['discount_factor']
-                                    row_dict['折后总新品铺货费 (元)'] = int(result['final_fee'])
-                                    active_stores = {k: v for k, v in result['store_details'].items() if v > 0}
-                                    row_dict['[详情]门店分布'] = str(active_stores)
-                                    coeffs_dict = {item[0]: item[1] for item in result['coefficients']}
-                                    row_dict['[详情]计算系数'] = str(coeffs_dict)
-                                    if batch_target_code and excluded_count > 0:
-                                        row_dict['备注'] = f"已剔除受限门店数：{excluded_count}"
-                                    elif batch_target_code:
-                                        row_dict['备注'] = "无受限门店剔除"
-                                    else:
-                                        row_dict['备注'] = ""
-                                    results.append(row_dict)
-                                except Exception as e:
-                                    row_dict['备注'] = f"Error: {e}"
-                                    results.append(row_dict)
-                                progress_bar.progress((index + 1) / len(df))
-                            
-                            result_df = pd.DataFrame(results)
-                            st.success("批量计算完成！")
-                            st.session_state.batch_results_df = result_df
-                    except Exception as e:
-                        st.error(f"处理文件失败: {e}")
-            
-            if st.session_state.batch_results_df is not None:
-                display_df = st.session_state.batch_results_df
-                
-                # 准备导出数据：普通用户排除详情字段
-                export_df = display_df.copy()
-                if not is_admin:
-                    # 排除最后三个详情字段
-                    columns_to_exclude = ['[详情]门店分布', '[详情]计算系数', '备注']
-                    export_df = export_df.drop(columns=[col for col in columns_to_exclude if col in export_df.columns])
-                
-                # 显示预览（根据角色过滤）
-                st.dataframe(export_df.head())
-                
-                # 导出（根据角色过滤）
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    export_df.to_excel(writer, index=False)
-                st.download_button(
-                    "导出结果", 
-                    output.getvalue(), 
-                    file_name="新品费批量计算结果.xlsx", 
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+        from src.ui.batch_processor import show_batch_processor
+        show_batch_processor(store_master_df, region_map_df, config, xp_map)
 
 if __name__ == "__main__":
     main()
