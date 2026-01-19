@@ -24,25 +24,25 @@ st.set_page_config(page_title="新品铺货费计算器", page_icon="💰", layo
 
 # Load Config with Cache
 @st.cache_data(show_spinner=False)
-def get_config(path):
+def get_config(path, mtime):
     return load_config(path)
 
 @st.cache_data(show_spinner=False)
-def get_store_master(path):
+def get_store_master(path, mtime):
     return load_store_master(path)
 
 @st.cache_data(show_spinner=False)
-def get_xp_mapping(path):
+def get_xp_mapping(path, mtime):
     return load_xp_mapping(path)
 
 @st.cache_data(show_spinner=False)
-def get_region_map(path):
+def get_region_map(path, mtime):
     if os.path.exists(path):
         return pd.read_excel(path, engine='openpyxl')
     return None
 
 @st.cache_data(show_spinner=False)
-def get_dim_metadata(path):
+def get_dim_metadata(path, mtime):
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -50,7 +50,8 @@ def get_dim_metadata(path):
 
 try:
     config_path = os.path.join(project_root, "config", "coefficients.xlsx")
-    config = get_config(config_path)
+    config_mtime = os.path.getmtime(config_path) if os.path.exists(config_path) else 0
+    config = get_config(config_path, config_mtime)
 except Exception as e:
     st.error(f"无法加载配置文件: {e}")
     st.stop()
@@ -155,22 +156,26 @@ def main():
 
     if os.path.exists(store_master_path):
         try:
-            store_master_df = get_store_master(store_master_path)
+            sm_mtime = os.path.getmtime(store_master_path)
+            store_master_df = get_store_master(store_master_path, sm_mtime)
             if "门店表更新时间" in store_master_df.columns:
                 update_time = str(store_master_df["门店表更新时间"].iloc[0])
         except Exception as e:
             st.error(f"加载门店数据失败: {e}")
             
     if os.path.exists(region_map_path):
-        region_map_df = get_region_map(region_map_path)
+        rm_mtime = os.path.getmtime(region_map_path)
+        region_map_df = get_region_map(region_map_path, rm_mtime)
         
     if os.path.exists(metadata_path):
-        dim_metadata = get_dim_metadata(metadata_path)
+        meta_mtime = os.path.getmtime(metadata_path)
+        dim_metadata = get_dim_metadata(metadata_path, meta_mtime)
         if dim_metadata and "更新时间" in dim_metadata:
             update_time = dim_metadata["更新时间"]
     
     xp_mapping_path = os.path.join(project_root, "data", "处方类别与批文分类表.xlsx")
-    xp_map = get_xp_mapping(xp_mapping_path)
+    xp_map_mtime = os.path.getmtime(xp_mapping_path) if os.path.exists(xp_mapping_path) else 0
+    xp_map = get_xp_mapping(xp_mapping_path, xp_map_mtime)
 
     # 显示隐藏式更新时间
     st.markdown(
