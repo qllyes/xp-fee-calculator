@@ -8,7 +8,8 @@ def load_store_master(path="data/store_master.xlsx"):
 def load_xp_mapping(path="data/处方类别与批文分类表.xlsx"):
     """
     加载处方类别与批文分类的映射表。
-    返回一个字典: {'处方类别名称': 'xp_code'}
+    容错机制：同时支持 '处方类别' (如 10-处方药) 和 '处方类别名称' (如 处方药) 作为 Key。
+    返回一个字典: {'10-处方药': '13', '处方药': '13', ...}
     """
     if not os.path.exists(path):
         print(f"Warning: Mapping file not found at {path}")
@@ -16,18 +17,29 @@ def load_xp_mapping(path="data/处方类别与批文分类表.xlsx"):
     
     try:
         df = read_excel_safe(path)
-        # 确保列名存在 (根据需求：【处方类别、批文分类编码】)
-        if '处方类别' not in df.columns or '批文分类编码' not in df.columns:
-            print("Warning: Mapping file columns mismatch. Expected '处方类别' and '批文分类编码'")
+        # 确保必需的列存在
+        required_cols = ['处方类别', '处方类别名称', '批文分类编码']
+        if not all(col in df.columns for col in required_cols):
+            print(f"Warning: Mapping file columns mismatch. Expected {required_cols}")
             return {}
 
-        # 清洗数据：去除空值，确保都为字符串格式以便对比
-        df = df.dropna(subset=['处方类别', '批文分类编码'])
-        # 去除两端空格，防止匹配失败
-        keys = df['处方类别'].astype(str).str.strip()
-        values = df['批文分类编码'].astype(str).str.strip()
+        # 清洗数据：去除空值
+        df = df.dropna(subset=['批文分类编码'])
         
-        mapping = dict(zip(keys, values))
+        mapping = {}
+        for _, row in df.iterrows():
+            target_code = str(row['批文分类编码']).strip()
+            
+            # 1. 处理 '处方类别' (如: 10-处方药)
+            val_a = str(row['处方类别']).strip()
+            if val_a and val_a.lower() != 'nan':
+                mapping[val_a] = target_code
+            
+            # 2. 处理 '处方类别名称' (如: 处方药)
+            val_c = str(row['处方类别名称']).strip()
+            if val_c and val_c.lower() != 'nan':
+                mapping[val_c] = target_code
+        
         return mapping
     except Exception as e:
         print(f"Error loading xp mapping: {e}")
