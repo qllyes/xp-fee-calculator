@@ -3,18 +3,30 @@ import pymysql
 import os
 from sqlalchemy import create_engine
 import json
+from urllib.parse import quote_plus  # 新增：用于处理密码中的特殊字符
 
 # 异步操作脚本，不在main.py内，
 # 门店基础表，取上月最后一天的门店表来做门店基础表，
 # 从数据库加载到本地excel，提高前端响应速度
 
 # --- Database Configuration ---
+
+# DB_CONFIG = {
+#     "host": "10.243.0.221",
+#     "port": 3306,
+#     "user": "xinpin",
+#     "password": "xinpin",
+#     "database": "new_goods_manage"
+# } 
+
+
+# 服务器mysql信息：直接写死以适应内网环境
 DB_CONFIG = {
-    "host": "10.243.0.221",
+    "host": "10.245.0.134",
     "port": 3306,
-    "user": "xinpin",
-    "password": "xinpin",
-    "database": "new_goods_manage"
+    "user": "root",  
+    "password": "Lbx363new@25Cs",
+    "database": "newproduct_tool"
 }
 
 # --- SQL Query ---
@@ -46,21 +58,29 @@ def sync_data():
     """
     print("🚀 Starting database sync...")
     
-    # 1. Create SQLAlchemy Engine
-    connection_str = f"mysql+pymysql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
+    # 1. 对密码进行转义处理，防止密码中的 '@' 等特殊字符导致解析错误
+    safe_password = quote_plus(DB_CONFIG['password'])
+    
+    # 2. Create SQLAlchemy Engine
+    # 注意：这里改用 safe_password
+    connection_str = f"mysql+pymysql://{DB_CONFIG['user']}:{safe_password}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
     
     try:
         engine = create_engine(connection_str)
         
-        # 2. Execute Query & Load into DataFrame
+        # 3. Execute Query & Load into DataFrame
         print("📥 Fetching data from MySQL...")
         df = pd.read_sql(SQL_QUERY, engine)
         
-        # 3. Data Transformation (Optional)
+        # 4. Data Transformation (Optional)
         row_count = len(df)
         print(f"✅ Fetched {row_count} rows.")
 
-        # 4. Save to Excel
+        if row_count == 0:
+            print("⚠️ Warning: No data found for the specified period.")
+            return
+
+        # 5. Save to Excel
         # Ensure the data directory exists
         current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         data_dir = os.path.join(current_dir, "data")
@@ -71,13 +91,13 @@ def sync_data():
         print(f"💾 Saving to {output_path}...")
         df.to_excel(output_path, index=False, engine='openpyxl')
         
-        # 5. 表2：Generate Region Map (Unique combinations of Company/Province/City)
+        # 6. 表2：Generate Region Map (Unique combinations of Company/Province/City)
         region_map_path = os.path.join(data_dir, "region_map.xlsx")
         print(f"💾 Generating region map to {region_map_path}...")
         region_df = df[['省公司', '省份', '城市']].dropna().drop_duplicates().sort_values(['省公司', '省份', '城市'])
         region_df.to_excel(region_map_path, index=False, engine='openpyxl')
         
-        # 6. Generate Dimension Metadata (JSON for UI dropdowns)
+        # 7. Generate Dimension Metadata (JSON for UI dropdowns)
         metadata_path = os.path.join(data_dir, "dim_metadata.json")
         print(f"💾 Generating dimension metadata to {metadata_path}...")
         
