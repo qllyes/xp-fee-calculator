@@ -11,23 +11,23 @@ from urllib.parse import quote_plus  # 新增：用于处理密码中的特殊�
 
 # --- Database Configuration ---
 
-# DB_CONFIG = {
-#     "host": "10.243.0.221",
-#     "port": 3306,
-#     "user": "xinpin",
-#     "password": "xinpin",
-#     "database": "new_goods_manage"
-# } 
+DB_CONFIG = {
+    "host": "10.243.0.221",
+    "port": 3306,
+    "user": "xinpin",
+    "password": "xinpin",
+    "database": "new_goods_manage"
+} 
 
 
 # 服务器mysql信息：直接写死以适应内网环境
-DB_CONFIG = {
-    "host": "10.245.0.134",
-    "port": 3306,
-    "user": "root",  
-    "password": "Lbx363new@25Cs",
-    "database": "newproduct_tool"
-}
+# DB_CONFIG = {
+#     "host": "10.245.0.134",
+#     "port": 3306,
+#     "user": "root",  
+#     "password": "Lbx363new@25Cs",
+#     "database": "newproduct_tool"
+# }
 
 # --- SQL Query ---
 SQL_QUERY = """
