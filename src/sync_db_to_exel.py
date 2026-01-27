@@ -10,7 +10,7 @@ from urllib.parse import quote_plus  # 新增：用于处理密码中的特殊�
 # 从数据库加载到本地excel，提高前端响应速度
 
 # --- Database Configuration ---
-
+# 本地mysql信息
 DB_CONFIG = {
     "host": "10.243.0.221",
     "port": 3306,

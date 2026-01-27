@@ -19,6 +19,10 @@ from src.core.store_manager import load_store_master, calc_auto_counts, extract_
 from src.core.calculator import calculate_fee
 from src.core.file_utils import read_excel_safe
 
+# --- Feature Toggle ---
+# 设置为 False 临时禁用批量计算器（tab2），解决文件加密问题后可恢复为 True
+ENABLE_BATCH_CALCULATOR = False
+
 # Page Config
 st.set_page_config(page_title="新品铺货费计算器", page_icon="💰", layout="wide")
 
@@ -196,7 +200,12 @@ def main():
     )
 
     # --- Tabs ---
-    tab1, tab2 = st.tabs(["🏷️ 单品计算器", "📂 批量计算器"])
+    # 根据功能开关决定是否显示批量计算器 tab
+    if ENABLE_BATCH_CALCULATOR:
+        tab1, tab2 = st.tabs(["🏷️ 单品计算器", "📂 批量计算器"])
+    else:
+        # 仅显示单品计算器，不创建 tab2
+        tab1 = st.container()
 
     # --- Tab 1: 单品计算器 ---
     with tab1:
@@ -501,119 +510,122 @@ def main():
                         st.error(f"计算出错: {e}")
 
     # --- Tab 2: 批量计算器 ---
-    with tab2:
-        st.markdown("<p style='color: gray; font-size: 0.95em; margin-top: -10px; margin-bottom: 20px;'>快速为多款新品一次性计算铺货费用</p>", unsafe_allow_html=True)
-        with st.expander("📥 需要导入模板？点这里下载", expanded=True):
-            template_path = os.path.join(project_root, "data", "batch_template.xlsx")
-            if os.path.exists(template_path):
-                with open(template_path, "rb") as f:
-                    st.download_button("下载导入模板", f, file_name="新品铺货费_批量导入模板.xlsx", use_container_width=True, type="secondary")
-            else:
-                st.warning("未找到模板文件")
-        st.markdown("---")
-        uploaded_batch = st.file_uploader("上传批量Excel文件", type=["xlsx"])
-        if "batch_last_file_id" not in st.session_state: st.session_state.batch_last_file_id = None
-        if "batch_results_df" not in st.session_state: st.session_state.batch_results_df = None
-
-        if uploaded_batch:
-            current_file_id = uploaded_batch.file_id
-            if current_file_id != st.session_state.batch_last_file_id:
-                st.session_state.batch_results_df = None
-                st.session_state.batch_last_file_id = current_file_id
-
-            if st.button("开始批量计算", type="primary", use_container_width=True):
-                if store_master_df is None:
-                    st.error("❌ 未找到门店主数据，请检查 data/store_master.xlsx 文件！")
+    # 仅在功能开关启用时显示批量计算器
+    if ENABLE_BATCH_CALCULATOR:
+        with tab2:
+            st.markdown("<p style='color: gray; font-size: 0.95em; margin-top: -10px; margin-bottom: 20px;'>快速为多款新品一次性计算铺货费用</p>", unsafe_allow_html=True)
+            with st.expander("📥 需要导入模板？点这里下载", expanded=True):
+                template_path = os.path.join(project_root, "data", "batch_template.xlsx")
+                if os.path.exists(template_path):
+                    with open(template_path, "rb") as f:
+                        st.download_button("下载导入模板", f, file_name="新品铺货费_批量导入模板.xlsx", use_container_width=True, type="secondary")
                 else:
-                    try:
-                        df = read_excel_safe(uploaded_batch)
-                        # [新增] 检查是否存在 '退货比例(%)' 列，如果不存在则警告或默认0
-                        if '退货比例(%)' not in df.columns:
-                            st.warning("⚠️ 提示：上传的Excel中缺少【退货比例(%)】列。如果是效期可退类商品，将默认按 100% 处理。建议下载最新模板。")
-                        
-                        with st.spinner("正在批量计算..."):
-                            results = []
-                            progress_bar = st.progress(0)
+                    st.warning("未找到模板文件")
+            st.markdown("---")
+            uploaded_batch = st.file_uploader("上传批量Excel文件", type=["xlsx"])
+            if "batch_last_file_id" not in st.session_state: st.session_state.batch_last_file_id = None
+            if "batch_results_df" not in st.session_state: st.session_state.batch_results_df = None
+
+            if uploaded_batch:
+                current_file_id = uploaded_batch.file_id
+                if current_file_id != st.session_state.batch_last_file_id:
+                    st.session_state.batch_results_df = None
+                    st.session_state.batch_last_file_id = current_file_id
+
+                if st.button("开始批量计算", type="primary", use_container_width=True):
+                    if store_master_df is None:
+                        st.error("❌ 未找到门店主数据，请检查 data/store_master.xlsx 文件！")
+                    else:
+                        try:
+                            df = read_excel_safe(uploaded_batch)
+                            # [新增] 检查是否存在 '退货比例(%)' 列，如果不存在则警告或默认0
+                            if '退货比例(%)' not in df.columns:
+                                st.warning("⚠️ 提示：上传的Excel中缺少【退货比例(%)】列。如果是效期可退类商品，将默认按 100% 处理。建议下载最新模板。")
                             
-                            for index, row in df.iterrows():
-                                row_dict = row.to_dict()
-                                try:
-                                    p_type = row_dict.get('统采or地采')
-                                    if pd.isna(p_type) or str(p_type).strip() == "":
-                                        row_dict['统采or地采'] = "统采"
-                                    else:
-                                        row_dict['统采or地采'] = str(p_type).strip()
+                            with st.spinner("正在批量计算..."):
+                                results = []
+                                progress_bar = st.progress(0)
+                                
+                                for index, row in df.iterrows():
+                                    row_dict = row.to_dict()
+                                    try:
+                                        p_type = row_dict.get('统采or地采')
+                                        if pd.isna(p_type) or str(p_type).strip() == "":
+                                            row_dict['统采or地采'] = "统采"
+                                        else:
+                                            row_dict['统采or地采'] = str(p_type).strip()
 
-                                    channel_name = row_dict.get('铺货通道')
-                                    batch_xp_cat = row_dict.get('处方类别')
-                                    batch_target_code = xp_map.get(str(batch_xp_cat).strip()) if (batch_xp_cat and xp_map) else None
-                                    
-                                    batch_war_zone = row_dict.get('提报战区')
-                                    if pd.isna(batch_war_zone) or str(batch_war_zone).strip() == "" or str(batch_war_zone).strip() == "全集团":
-                                        batch_war_zone = "全集团"
-                                    else:
-                                        batch_war_zone = str(batch_war_zone).strip()
+                                        channel_name = row_dict.get('铺货通道')
+                                        batch_xp_cat = row_dict.get('处方类别')
+                                        batch_target_code = xp_map.get(str(batch_xp_cat).strip()) if (batch_xp_cat and xp_map) else None
+                                        
+                                        batch_war_zone = row_dict.get('提报战区')
+                                        if pd.isna(batch_war_zone) or str(batch_war_zone).strip() == "" or str(batch_war_zone).strip() == "全集团":
+                                            batch_war_zone = "全集团"
+                                        else:
+                                            batch_war_zone = str(batch_war_zone).strip()
 
-                                    # [新增] 清洗退货比例
-                                    ratio_val = row_dict.get('退货比例(%)', 100)
-                                    if pd.isna(ratio_val): ratio_val = 100
-                                    row_dict['退货比例(%)'] = float(ratio_val)
+                                        # [新增] 清洗退货比例
+                                        ratio_val = row_dict.get('退货比例(%)', 100)
+                                        if pd.isna(ratio_val): ratio_val = 100
+                                        row_dict['退货比例(%)'] = float(ratio_val)
 
-                                    excluded_count = 0
-                                    if channel_name == "自定义":
-                                        store_counts = extract_manual_counts(row_dict)
-                                    else:
-                                        store_counts = calc_auto_counts(
-                                            store_master_df, 
-                                            channel_name, 
-                                            restricted_xp_code=batch_target_code,
-                                            war_zone=batch_war_zone
-                                        )
-                                        if batch_target_code:
-                                            raw_counts = calc_auto_counts(
+                                        excluded_count = 0
+                                        if channel_name == "自定义":
+                                            store_counts = extract_manual_counts(row_dict)
+                                        else:
+                                            store_counts = calc_auto_counts(
                                                 store_master_df, 
                                                 channel_name, 
-                                                restricted_xp_code=None,
+                                                restricted_xp_code=batch_target_code,
                                                 war_zone=batch_war_zone
                                             )
-                                            excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
-                                    
-                                    result = calculate_fee(row_dict, store_counts, config)
-                                    
-                                    row_dict['理论总新品铺货费 (元)'] = int(result['theoretical_fee'])
-                                    row_dict['折扣'] = result['discount_factor']
-                                    row_dict['折后总新品铺货费 (元)'] = int(result['final_fee'])
-                                    active_stores = {k: v for k, v in result['store_details'].items() if v > 0}
-                                    row_dict['[详情]门店分布'] = str(active_stores)
-                                    if batch_target_code and excluded_count > 0:
-                                        row_dict['备注'] = f"已剔除受限门店数：{excluded_count}"
-                                    elif batch_target_code:
-                                        row_dict['备注'] = "无受限门店剔除"
-                                    else:
-                                        row_dict['备注'] = ""
-                                    results.append(row_dict)
-                                except Exception as e:
-                                    row_dict['备注'] = f"Error: {e}"
-                                    results.append(row_dict)
-                                progress_bar.progress((index + 1) / len(df))
-                            
-                            result_df = pd.DataFrame(results)
-                            st.success("批量计算完成！")
-                            st.session_state.batch_results_df = result_df
-                    except Exception as e:
-                        st.error(f"处理文件失败: {e}")
-            
-            if st.session_state.batch_results_df is not None:
-                st.dataframe(st.session_state.batch_results_df.head())
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    st.session_state.batch_results_df.to_excel(writer, index=False)
-                st.download_button(
-                    "导出结果", 
-                    output.getvalue(), 
-                    file_name="新品费批量计算结果.xlsx", 
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                                            if batch_target_code:
+                                                raw_counts = calc_auto_counts(
+                                                    store_master_df, 
+                                                    channel_name, 
+                                                    restricted_xp_code=None,
+                                                    war_zone=batch_war_zone
+                                                )
+                                                excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
+                                        
+                                        result = calculate_fee(row_dict, store_counts, config)
+                                        
+                                        row_dict['理论总新品铺货费 (元)'] = int(result['theoretical_fee'])
+                                        row_dict['折扣'] = result['discount_factor']
+                                        row_dict['折后总新品铺货费 (元)'] = int(result['final_fee'])
+                                        active_stores = {k: v for k, v in result['store_details'].items() if v > 0}
+                                        row_dict['[详情]门店分布'] = str(active_stores)
+                                        if batch_target_code and excluded_count > 0:
+                                            row_dict['备注'] = f"已剔除受限门店数：{excluded_count}"
+                                        elif batch_target_code:
+                                            row_dict['备注'] = "无受限门店剔除"
+                                        else:
+                                            row_dict['备注'] = ""
+                                        results.append(row_dict)
+                                    except Exception as e:
+                                        row_dict['备注'] = f"Error: {e}"
+                                        results.append(row_dict)
+                                    progress_bar.progress((index + 1) / len(df))
+                                
+                                result_df = pd.DataFrame(results)
+                                st.success("批量计算完成！")
+                                st.session_state.batch_results_df = result_df
+                        except Exception as e:
+                            st.error(f"处理文件失败: {e}")
+                
+                if st.session_state.batch_results_df is not None:
+                    st.dataframe(st.session_state.batch_results_df.head())
+                    output = BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        st.session_state.batch_results_df.to_excel(writer, index=False)
+                    st.download_button(
+                        "导出结果", 
+                        output.getvalue(), 
+                        file_name="新品费批量计算结果.xlsx", 
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+        # 批量计算器模块结束（条件判断结束）
 
 if __name__ == "__main__":
     main()
