@@ -60,6 +60,137 @@ except Exception as e:
     st.error(f"无法加载配置文件: {e}")
     st.stop()
 
+# ============================================================
+# 标准通道智能联动辅助函数
+# ============================================================
+
+def is_payment_term_gte_60(payment_method: str) -> bool:
+    """
+    判断付款方式的账期是否>=60天
+    
+    Args:
+        payment_method: 付款方式字符串
+    
+    Returns:
+        True if 账期>=60天 or 实销月结, else False
+    """
+    if pd.isna(payment_method):
+        return False
+    
+    payment_str = str(payment_method).strip()
+    
+    # 实销月结等同于>=60天
+    if '实销月结' in payment_str:
+        return True
+    
+    # 提取票到天数
+    import re
+    match = re.search(r'票到(\d+)天', payment_str)
+    if match:
+        days = int(match.group(1))
+        return days >= 60
+    
+    # 特殊处理"票到90天以上"
+    if '票到90天以上' in payment_str or '账期天数>=60天' in payment_str:
+        return True
+    
+    return False
+
+
+def classify_return_policy(return_policy: str, return_ratio: float) -> str:
+    """
+    对退货条件进行分类
+    
+    Args:
+        return_policy: 退货条件
+        return_ratio: 退货比例（纯数字 0-100）
+    
+    Returns:
+        'full_return_100' | 'partial_return' | 'other'
+    """
+    if pd.isna(return_policy):
+        return 'other'
+    
+    policy_str = str(return_policy).strip()
+    
+    # 效期可退相关
+    is_expiry_return = '效期可退' in policy_str
+    
+    if is_expiry_return:
+        if return_ratio == 100:
+            return 'full_return_100'  # 效期可退100%
+        else:
+            return 'partial_return'    # 效期可退[0%,100)
+    
+    # 其他退货条件
+    return 'other'
+
+
+def is_medicine_category(category: str) -> bool:
+    """
+    判断是否为中西成药
+    
+    Args:
+        category: 新品大类
+    
+    Returns:
+        True if 中西成药, else False
+    """
+    if pd.isna(category):
+        return False
+    
+    category_str = str(category).strip()
+    return '中西成药' in category_str
+
+
+def get_default_channel(return_policy: str, 
+                       return_ratio: float,
+                       payment_method: str, 
+                       category: str) -> str:
+    """
+    根据业务规则获取默认标准通道
+    
+    Args:
+        return_policy: 退货条件
+        return_ratio: 退货比例（纯数字 0-100）
+        payment_method: 付款方式
+        category: 新品大类
+    
+    Returns:
+        标准通道选项: 全量门店 | 小店及以上 | 中店及以上 | 大店及以上 | 旗舰店及以上 | 超级旗舰店
+    """
+    policy_type = classify_return_policy(return_policy, return_ratio)
+    is_long_term = is_payment_term_gte_60(payment_method)
+    is_medicine = is_medicine_category(category)
+    is_prepaid = '预付款' in str(payment_method) if not pd.isna(payment_method) else False
+    
+    # 规则1: 效期可退100%
+    if policy_type == 'full_return_100':
+        if is_long_term:
+            return "全量门店"
+        else:
+            return "小店及以上"
+    
+    # 规则2: 效期可退[0%,100)
+    elif policy_type == 'partial_return':
+        if is_prepaid:
+            return "大店及以上"
+        elif is_long_term:
+            return "全量门店" if is_medicine else "小店及以上"
+        else:  # 账期<60天
+            return "小店及以上" if is_medicine else "大店及以上"
+    
+    # 规则3: 其他退货条件
+    else:
+        if is_long_term:
+            return "小店及以上" if is_medicine else "大店及以上"
+        else:
+            return "大店及以上"
+
+# ============================================================
+# 主应用入口
+# ============================================================
+
 def main():
     # --- 优化后的混合布局 CSS ---
     st.markdown("""
@@ -308,10 +439,27 @@ def main():
                 selected_filters = {}
                 
                 if "标准通道" in channel_mode:
+                    # 💡 智能推荐：根据三因素计算默认通道
+                    recommended_channel = get_default_channel(
+                        return_policy=return_policy,
+                        return_ratio=return_ratio_val,
+                        payment_method=payment,
+                        category=category
+                    )
+                    
+                    # 获取默认选项的索引
+                    channel_options = ["全量门店", "小店及以上", "中店及以上", "大店及以上", "旗舰店及以上", "超级旗舰店"]
+                    try:
+                        default_index = channel_options.index(recommended_channel)
+                    except ValueError:
+                        default_index = 0  # 兜底：默认全量门店
+                    
                     color_selection = st.selectbox(
                         "选择标准通道范围",
-                        ["全量门店", "小店及以上", "中店及以上", "大店及以上", "旗舰店及以上", "超级旗舰店"],
-                        label_visibility="collapsed"
+                        channel_options,
+                        index=default_index,
+                        label_visibility="collapsed",
+                        help=f"💡 智能推荐: {recommended_channel}"
                     )
                     channel = color_selection.split()[-1] 
                 else:
