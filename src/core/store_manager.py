@@ -2,14 +2,16 @@ import pandas as pd
 import os
 from src.core.file_utils import read_excel_safe
 
+
 def load_store_master(path="data/store_master.xlsx"):
     return pd.read_excel(path)
+
 
 def load_xp_mapping(path="data/处方类别与批文分类表.xlsx"):
     """
     加载处方类别与批文分类的映射表。
-    容错机制：同时支持 '处方类别' (如 10-处方药) 和 '处方类别名称' (如 处方药) 作为 Key。
-    返回一个字典: {'10-处方药': '13', '处方药': '13', ...}
+    只支持读取 '处方类别' (如 10-处方药) 作为 Key，用于前端规范展示与后台受限剔除校验。
+    返回一个字典: {'10-处方药': '13', ...}
     """
     if not os.path.exists(path):
         print(f"Warning: Mapping file not found at {path}")
@@ -18,7 +20,7 @@ def load_xp_mapping(path="data/处方类别与批文分类表.xlsx"):
     try:
         df = read_excel_safe(path)
         # 确保必需的列存在
-        required_cols = ['处方类别', '处方类别名称', '批文分类编码']
+        required_cols = ['处方类别', '批文分类编码']
         if not all(col in df.columns for col in required_cols):
             print(f"Warning: Mapping file columns mismatch. Expected {required_cols}")
             return {}
@@ -30,22 +32,108 @@ def load_xp_mapping(path="data/处方类别与批文分类表.xlsx"):
         for _, row in df.iterrows():
             target_code = str(row['批文分类编码']).strip()
             
-            # 1. 处理 '处方类别' (如: 10-处方药)
+            # 处理 '处方类别' (如: 10-处方药)
             val_a = str(row['处方类别']).strip()
             if val_a and val_a.lower() != 'nan':
                 mapping[val_a] = target_code
             
-            # 2. 处理 '处方类别名称' (如: 处方药)
-            val_c = str(row['处方类别名称']).strip()
-            if val_c and val_c.lower() != 'nan':
-                mapping[val_c] = target_code
-        
         return mapping
     except Exception as e:
         print(f"Error loading xp mapping: {e}")
         return {}
 
-def calc_auto_counts(store_master_df, channel, restricted_xp_code=None, war_zone=None, filters=None):
+
+def load_store_blacklist(path: str = "data/新品费剔除门店黑名单.xlsx") -> pd.DataFrame | None:
+    """
+    加载门店黑名单文件。
+
+    文件结构: 两列 ['门店sapid', '处方类别or新品大类']
+    
+    Returns:
+        DataFrame 或 None（文件不存在时）
+    """
+    if not os.path.exists(path):
+        print(f"Warning: Blacklist file not found at {path}")
+        return None
+
+    try:
+        df = read_excel_safe(path, dtype_spec={"门店sapid": str})
+        required_cols = ["门店sapid", "处方类别or新品大类"]
+        if not all(col in df.columns for col in required_cols):
+            print(f"Warning: Blacklist file columns mismatch. Expected {required_cols}, got {list(df.columns)}")
+            return None
+        # 清洗：去除空值、统一类型
+        df = df.dropna(subset=required_cols)
+        df["门店sapid"] = df["门店sapid"].astype(str).str.strip()
+        df["处方类别or新品大类"] = df["处方类别or新品大类"].astype(str).str.strip()
+        return df
+    except Exception as e:
+        print(f"Error loading store blacklist: {e}")
+        return None
+
+
+def _get_blacklisted_sapids(
+    blacklist_df: pd.DataFrame | None,
+    selected_xp_category: str | None,
+    category: str | None,
+) -> set[str]:
+    """
+    根据前端选择的处方类别和新品大类，从黑名单中提取需要剔除的门店sapid集合。
+
+    匹配规则：模糊包含匹配。
+    黑名单中的类别值（如 '处方药'）只要被包含在前端值（如 '10-处方药'）中，即视为命中。
+
+    Args:
+        blacklist_df: 黑名单 DataFrame
+        selected_xp_category: 前端选择的处方类别 (如 '10-处方药')
+        category: 前端选择的新品大类 (如 '养生中药')
+
+    Returns:
+        需要剔除的门店sapid集合
+    """
+    if blacklist_df is None or blacklist_df.empty:
+        return set()
+
+    # 收集前端有效值
+    front_values: list[str] = []
+    if selected_xp_category and str(selected_xp_category).strip().lower() != "nan":
+        front_values.append(str(selected_xp_category).strip())
+    if category and str(category).strip().lower() != "nan":
+        front_values.append(str(category).strip())
+
+    if not front_values:
+        return set()
+
+    # 获取黑名单中所有不重复的类别
+    blacklist_categories = blacklist_df["处方类别or新品大类"].unique()
+
+    # 模糊匹配：黑名单值 是否被包含在 任一前端值中
+    matched_categories = [
+        bl_cat
+        for bl_cat in blacklist_categories
+        if any(bl_cat in fv for fv in front_values)
+    ]
+
+    if not matched_categories:
+        return set()
+
+    return set(
+        blacklist_df.loc[
+            blacklist_df["处方类别or新品大类"].isin(matched_categories), "门店sapid"
+        ]
+    )
+
+
+def calc_auto_counts(
+    store_master_df,
+    channel,
+    restricted_xp_code=None,
+    war_zone=None,
+    filters=None,
+    blacklist_df: pd.DataFrame | None = None,
+    selected_xp_category: str | None = None,
+    category: str | None = None,
+):
     """
     根据选择的通道、处方限制、战区和额外过滤器计算门店数量。
     
@@ -57,6 +145,9 @@ def calc_auto_counts(store_master_df, channel, restricted_xp_code=None, war_zone
         restricted_xp_code: (可选) 用于检查门店限制的 xp_code 字符串。
         war_zone: (可选) 战区名称。
         filters: (可选) 额外过滤器的字典。
+        blacklist_df: (可选) 门店黑名单 DataFrame。
+        selected_xp_category: (可选) 前端选择的处方类别，用于黑名单匹配。
+        category: (可选) 前端选择的新品大类，用于黑名单匹配。
     
     Returns:
         dict: {门店类型: 数量} 的字典。
@@ -144,6 +235,15 @@ def calc_auto_counts(store_master_df, channel, restricted_xp_code=None, war_zone
 
             exclude_mask = current_df["受限批文分类编码"].apply(is_store_excluded)
             current_df = current_df[~exclude_mask]
+
+    # --- 3.5 门店黑名单过滤逻辑 ---
+    blacklisted_sapids = _get_blacklisted_sapids(
+        blacklist_df, selected_xp_category, category
+    )
+    if blacklisted_sapids and "门店sapid" in current_df.columns:
+        current_df = current_df[
+            ~current_df["门店sapid"].astype(str).str.strip().isin(blacklisted_sapids)
+        ]
 
     # --- 4. 统计指定类型的门店数量 ---
     filtered_df = current_df[current_df["销售规模"].isin(valid_types)]

@@ -15,7 +15,7 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 from src.core.config_loader import load_config
-from src.core.store_manager import load_store_master, calc_auto_counts, extract_manual_counts, load_xp_mapping
+from src.core.store_manager import load_store_master, calc_auto_counts, extract_manual_counts, load_xp_mapping, load_store_blacklist
 from src.core.calculator import calculate_fee
 from src.core.file_utils import read_excel_safe
 
@@ -38,6 +38,10 @@ def get_store_master(path, mtime):
 @st.cache_data(show_spinner=False)
 def get_xp_mapping(path, mtime):
     return load_xp_mapping(path)
+
+@st.cache_data(show_spinner=False)
+def get_store_blacklist(path, mtime):
+    return load_store_blacklist(path)
 
 @st.cache_data(show_spinner=False)
 def get_region_map(path, mtime):
@@ -311,6 +315,10 @@ def main():
     xp_mapping_path = os.path.join(project_root, "data", "处方类别与批文分类表.xlsx")
     xp_map_mtime = os.path.getmtime(xp_mapping_path) if os.path.exists(xp_mapping_path) else 0
     xp_map = get_xp_mapping(xp_mapping_path, xp_map_mtime)
+
+    blacklist_path = os.path.join(project_root, "data", "新品费剔除门店黑名单.xlsx")
+    bl_mtime = os.path.getmtime(blacklist_path) if os.path.exists(blacklist_path) else 0
+    store_blacklist_df = get_store_blacklist(blacklist_path, bl_mtime)
 
     # 显示隐藏式更新时间
     st.markdown(
@@ -595,33 +603,39 @@ def main():
                                 channel, 
                                 restricted_xp_code=target_xp_code,
                                 war_zone=selected_war_zone,
-                                filters=selected_filters
+                                filters=selected_filters,
+                                blacklist_df=store_blacklist_df,
+                                selected_xp_category=selected_xp_category,
+                                category=category,
                             )
-                            if target_xp_code:
-                                raw_counts = calc_auto_counts(
-                                    store_master_df, 
-                                    channel, 
-                                    restricted_xp_code=None,
-                                    war_zone=selected_war_zone,
-                                    filters=selected_filters
-                                )
-                                excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
+                            # 计算剔除数：用无任何限制的原始数 - 最终数
+                            raw_counts = calc_auto_counts(
+                                store_master_df,
+                                channel,
+                                restricted_xp_code=None,
+                                war_zone=selected_war_zone,
+                                filters=selected_filters,
+                            )
+                            excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
                         else:
                             is_auto_calc_mode = True
                             store_counts = calc_auto_counts(
                                 store_master_df, 
                                 channel, 
                                 restricted_xp_code=target_xp_code,
-                                war_zone=selected_war_zone
+                                war_zone=selected_war_zone,
+                                blacklist_df=store_blacklist_df,
+                                selected_xp_category=selected_xp_category,
+                                category=category,
                             )
-                            if target_xp_code:
-                                raw_counts = calc_auto_counts(
-                                    store_master_df, 
-                                    channel, 
-                                    restricted_xp_code=None,
-                                    war_zone=selected_war_zone
-                                )
-                                excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
+                            # 计算剔除数：用无任何限制的原始数 - 最终数
+                            raw_counts = calc_auto_counts(
+                                store_master_df,
+                                channel,
+                                restricted_xp_code=None,
+                                war_zone=selected_war_zone,
+                            )
+                            excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
                         
                         result = calculate_fee(row_data, store_counts, config)
 
@@ -652,7 +666,8 @@ def main():
                             st.dataframe(pd.DataFrame(store_data), use_container_width=True, hide_index=True)
                             total_stores = sum(result['store_details'].values())
                             footer_text = f"计算池中的门店数量: {total_stores:,}"
-                            if is_auto_calc_mode and target_xp_code: footer_text += f" | 剔除受限门店数: {excluded_count}"
+                            if is_auto_calc_mode and excluded_count > 0:
+                                footer_text += f" | 剔除门店数(受限): {excluded_count}"
                             st.caption(footer_text)
                     except Exception as e:
                         st.error(f"计算出错: {e}")
@@ -719,6 +734,7 @@ def main():
                                         row_dict['退货比例(%)'] = float(ratio_val)
 
                                         excluded_count = 0
+                                        batch_category = row_dict.get('新品大类')
                                         if channel_name == "自定义":
                                             store_counts = extract_manual_counts(row_dict)
                                         else:
@@ -726,16 +742,18 @@ def main():
                                                 store_master_df, 
                                                 channel_name, 
                                                 restricted_xp_code=batch_target_code,
-                                                war_zone=batch_war_zone
+                                                war_zone=batch_war_zone,
+                                                blacklist_df=store_blacklist_df,
+                                                selected_xp_category=str(batch_xp_cat).strip() if batch_xp_cat else None,
+                                                category=str(batch_category).strip() if batch_category else None,
                                             )
-                                            if batch_target_code:
-                                                raw_counts = calc_auto_counts(
-                                                    store_master_df, 
-                                                    channel_name, 
-                                                    restricted_xp_code=None,
-                                                    war_zone=batch_war_zone
-                                                )
-                                                excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
+                                            raw_counts = calc_auto_counts(
+                                                store_master_df,
+                                                channel_name,
+                                                restricted_xp_code=None,
+                                                war_zone=batch_war_zone,
+                                            )
+                                            excluded_count = sum(raw_counts.values()) - sum(store_counts.values())
                                         
                                         result = calculate_fee(row_dict, store_counts, config)
                                         
@@ -744,10 +762,8 @@ def main():
                                         row_dict['折后总新品铺货费 (元)'] = int(result['final_fee'])
                                         active_stores = {k: v for k, v in result['store_details'].items() if v > 0}
                                         row_dict['[详情]门店分布'] = str(active_stores)
-                                        if batch_target_code and excluded_count > 0:
-                                            row_dict['备注'] = f"已剔除受限门店数：{excluded_count}"
-                                        elif batch_target_code:
-                                            row_dict['备注'] = "无受限门店剔除"
+                                        if excluded_count > 0:
+                                            row_dict['备注'] = f"已剔除门店数(受限)：{excluded_count}"
                                         else:
                                             row_dict['备注'] = ""
                                         results.append(row_dict)
